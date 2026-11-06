@@ -4,27 +4,93 @@ const PAGES = [['overview', 'ภาพรวม'], ['creators', 'Creator'], ['pr
 const fmt = v => Math.round(+v || 0).toLocaleString('en-US');
 const fmt1 = v => (+v || 0).toLocaleString('en-US', { maximumFractionDigits: 1 });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const tip = t => `<span class="pr-i" data-tip="${esc(t)}" style="font-size:11px;color:var(--text3);font-weight:400;cursor:default;">ⓘ</span>`;
+const tip = t => `<span class="pr-i" data-tip="${esc(t.replace(/<br\s*\/?>/g, '\n').replace(/<\/?b>/g, ''))}" style="font-size:11px;color:var(--text3);font-weight:400;cursor:default;">ⓘ</span>`;
 const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const dTh = s => new Date(s + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
 const days = (a, b) => { const out = []; for (let d = new Date(a + 'T00:00:00'); ymd(d) <= b; d.setDate(d.getDate() + 1)) out.push(ymd(d)); return out; };
 const SRC_COLOR = { 'ร้าน · Live': '#E11D48', 'ร้าน · คลิป': '#0D9488', 'ร้าน · หน้าสินค้า': '#64748B', 'Creator · Live': '#FB7185', 'Creator · คลิป': '#2DD4BF', 'Creator · หน้าสินค้า': '#A78BFA' };
 const srcColor = s => SRC_COLOR[s] || '#F59E0B';
-let RANGE = { from: '', to: '' }, CHARTS = {}, PRESETS = {};
+let RANGE = { from: '', to: '' }, CHARTS = {};
 
 function toggleTheme() { const on = document.body.classList.toggle('light-theme'); localStorage.setItem('theme', on ? 'light' : 'dark'); route(); }
 if (localStorage.getItem('theme') !== 'dark') document.body.classList.add('light-theme');
 
-function markPreset() { document.querySelectorAll('#presets button').forEach(b => { const [a, c] = PRESETS[b.dataset.p](); b.setAttribute('aria-pressed', a === RANGE.from && c === RANGE.to); }); }
-function setRange(a, b) { RANGE = { from: a, to: b }; document.getElementById('dFrom').value = a; document.getElementById('dTo').value = b; markPreset(); route(); }
+// ===== ช่วงวันที่: ปุ่มเดียวบนแถบบน · กดแล้วมีช่วงลัด (ซ้าย) + ปฏิทิน 2 เดือน (ขวา) · ปีแสดงเป็น พ.ศ. =====
+const TH_M = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const TH_ML = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+const TH_WD = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+const pDate = s => new Date(s + 'T00:00:00');
+const dLong = s => { const d = pDate(s); return `${d.getDate()} ${TH_M[d.getMonth()]} ${d.getFullYear() + 543}`; };
+const dFull = s => pDate(s).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+function rangeText(a, b) {
+  const x = pDate(a), y = pDate(b);
+  if (a === b) return dLong(a);
+  if (x.getFullYear() !== y.getFullYear()) return `${dLong(a)} – ${dLong(b)}`;
+  return x.getMonth() === y.getMonth() ? `${x.getDate()} – ${y.getDate()} ${TH_M[y.getMonth()]} ${y.getFullYear() + 543}` : `${x.getDate()} ${TH_M[x.getMonth()]} – ${y.getDate()} ${TH_M[y.getMonth()]} ${y.getFullYear() + 543}`;
+}
+function presets() {
+  const n = new Date(), y = n.getFullYear(), m = n.getMonth(), d = n.getDate(), D = (a, b, c) => ymd(new Date(a, b, c));
+  return { 'วันนี้': [D(y, m, d), D(y, m, d)], 'เมื่อวาน': [D(y, m, d - 1), D(y, m, d - 1)], '7 วันล่าสุด': [D(y, m, d - 6), D(y, m, d)],
+    '30 วันล่าสุด': [D(y, m, d - 29), D(y, m, d)], 'เดือนนี้': [D(y, m, 1), D(y, m, d)], 'เดือนก่อน': [D(y, m - 1, 1), D(y, m, 0)] };
+}
+const presetOf = (a, b) => { const p = presets(); return Object.keys(p).find(k => p[k][0] === a && p[k][1] === b) || ''; };
+const CAL_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
+function drawRangeBtn() {
+  const t = presetOf(RANGE.from, RANGE.to), b = document.getElementById('rpBtn');
+  b.innerHTML = `${CAL_ICON}${t ? `<span class="rp-tag">${t}</span>` : ''}<span class="rp-txt">${rangeText(RANGE.from, RANGE.to)}</span><i class="rp-car"></i>`;
+}
+function setRange(a, b) { if (b < a) [a, b] = [b, a]; RANGE = { from: a, to: b }; drawRangeBtn(); route(); }
+let RP = null;   // กล่องเลือกช่วงที่เปิดอยู่: { pop, a, b, hover, view }
+function closeRP() { if (!RP) return; RP.pop.remove(); RP = null; document.getElementById('rpBtn').setAttribute('aria-expanded', 'false'); }
+function monthHTML(y, m) {
+  const lead = new Date(y, m, 1).getDay(), n = new Date(y, m + 1, 0).getDate(), today = ymd(new Date());
+  let cells = '<span></span>'.repeat(lead);
+  for (let d = 1; d <= n; d++) { const s = ymd(new Date(y, m, d)); cells += `<button type="button" class="rp-d${s === today ? ' is-today' : ''}" data-d="${s}"${s > today ? ' disabled' : ''}>${d}</button>`; }
+  return `<div class="rp-cal"><div class="rp-mh">${TH_ML[m]} ${y + 543}</div><div class="rp-wd">${TH_WD.map(w => `<span>${w}</span>`).join('')}</div><div class="rp-g">${cells}</div></div>`;
+}
+function paintRP() {
+  const end = RP.b || (RP.hover && RP.hover >= RP.a ? RP.hover : null);
+  RP.pop.querySelectorAll('.rp-d').forEach(c => { const d = c.dataset.d;
+    c.classList.toggle('is-start', d === RP.a); c.classList.toggle('is-end', !!end && d === end); c.classList.toggle('in-range', !!end && d > RP.a && d < end); c.classList.toggle('is-span', !!end && end !== RP.a); });
+  const p = presets(); RP.pop.querySelectorAll('[data-p]').forEach(x => x.setAttribute('aria-pressed', p[x.dataset.p][0] === RP.a && p[x.dataset.p][1] === RP.b));
+  RP.pop.querySelector('.rp-sel').innerHTML = RP.b ? `<b>${rangeText(RP.a, RP.b)}</b> · ${fmt(days(RP.a, RP.b).length)} วัน` : `<b>${dLong(RP.a)}</b> – เลือกวันสุดท้าย`;
+  RP.pop.querySelector('[data-act="ok"]').disabled = !RP.b;
+}
+function drawRP() {
+  const v = RP.view, v2 = new Date(v.getFullYear(), v.getMonth() + 1, 1), n = new Date(), canNext = v2 < new Date(n.getFullYear(), n.getMonth(), 1);
+  RP.pop.innerHTML = `<div class="rp-side">${Object.keys(presets()).map(k => `<button type="button" data-p="${k}">${k}</button>`).join('')}</div>
+    <div class="rp-main"><div class="rp-nav"><button type="button" class="rp-arrow" data-nav="-1" aria-label="เดือนก่อน">‹</button><button type="button" class="rp-arrow" data-nav="1" aria-label="เดือนถัดไป"${canNext ? '' : ' disabled'}>›</button></div>
+      <div class="rp-cals">${monthHTML(v.getFullYear(), v.getMonth())}${monthHTML(v2.getFullYear(), v2.getMonth())}</div>
+      <div class="rp-foot"><span class="rp-sel"></span><button type="button" class="btn" data-act="cancel">ยกเลิก</button><button type="button" class="btn pri" data-act="ok">ใช้ช่วงนี้</button></div></div>`;
+  paintRP();
+  const r = document.getElementById('rpBtn').getBoundingClientRect(), w = RP.pop.offsetWidth;
+  RP.pop.style.top = (r.bottom + 8) + 'px'; RP.pop.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
+}
+function openRP() {
+  if (RP) return closeRP();
+  const e = pDate(RANGE.to), pop = document.createElement('div');
+  RP = { pop, a: RANGE.from, b: RANGE.to, hover: null, view: new Date(e.getFullYear(), e.getMonth() - 1, 1) };
+  pop.className = 'rp-pop'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'เลือกช่วงวันที่');
+  document.body.appendChild(pop); document.getElementById('rpBtn').setAttribute('aria-expanded', 'true'); drawRP();
+  pop.addEventListener('click', ev => {
+    ev.stopPropagation();
+    const p = ev.target.closest('[data-p]'); if (p) { const [a, b] = presets()[p.dataset.p]; closeRP(); return setRange(a, b); }
+    const nav = ev.target.closest('[data-nav]'); if (nav) { if (!nav.disabled) { RP.view = new Date(RP.view.getFullYear(), RP.view.getMonth() + +nav.dataset.nav, 1); drawRP(); } return; }
+    const d = ev.target.closest('[data-d]');
+    if (d && !d.disabled) { const x = d.dataset.d; if (RP.b || x < RP.a) { RP.a = x; RP.b = null; } else RP.b = x; RP.hover = null; return paintRP(); }   // กดวันแรก แล้วกดวันสุดท้าย (กดวันเดิมซ้ำ = วันเดียว)
+    const act = ev.target.closest('[data-act]'); if (!act) return;
+    if (act.dataset.act === 'ok' && RP.b) { const { a, b } = RP; closeRP(); setRange(a, b); } else if (act.dataset.act === 'cancel') closeRP();
+  });
+  pop.addEventListener('mouseover', ev => { if (!RP || RP.b) return; const c = ev.target.closest('[data-d]'); const h = c && !c.disabled ? c.dataset.d : null; if (h !== RP.hover) { RP.hover = h; paintRP(); } });
+}
 function initRange() {
-  const n = new Date(), p = PRESETS = {
-    '7 วัน': () => [ymd(new Date(n.getFullYear(), n.getMonth(), n.getDate() - 6)), ymd(n)], '30 วัน': () => [ymd(new Date(n.getFullYear(), n.getMonth(), n.getDate() - 29)), ymd(n)],
-    'เดือนนี้': () => [ymd(new Date(n.getFullYear(), n.getMonth(), 1)), ymd(n)], 'เดือนก่อน': () => [ymd(new Date(n.getFullYear(), n.getMonth() - 1, 1)), ymd(new Date(n.getFullYear(), n.getMonth(), 0))] };
-  document.getElementById('presets').innerHTML = Object.keys(p).map(k => `<button type="button" data-p="${k}">${k}</button>`).join('');
-  document.querySelectorAll('#presets button').forEach(b => b.onclick = () => setRange(...p[b.dataset.p]()));
-  ['dFrom', 'dTo'].forEach(id => document.getElementById(id).onchange = () => setRange(document.getElementById('dFrom').value, document.getElementById('dTo').value));
-  const [a, b] = p['เดือนนี้'](); RANGE = { from: a, to: b }; document.getElementById('dFrom').value = a; document.getElementById('dTo').value = b; markPreset();
+  const box = document.getElementById('range');
+  if (!document.getElementById('rpBtn')) box.innerHTML = '<button type="button" class="rp-btn" id="rpBtn" aria-haspopup="dialog" aria-expanded="false"></button>';
+  document.getElementById('rpBtn').onclick = e => { e.stopPropagation(); openRP(); };
+  document.addEventListener('click', e => { if (RP && !RP.pop.contains(e.target)) closeRP(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRP(); });
+  addEventListener('resize', closeRP);
+  const [a, b] = presets()['เดือนนี้']; RANGE = { from: a, to: b }; drawRangeBtn();
 }
 const inRange = q => q.gte('d', RANGE.from).lte('d', RANGE.to);
 const metric = (label, value, sub, info) => `<div class="ui-metric is-static"><span class="ui-metric-l">${label}${info ? ' ' + tip(info) : ''}</span><span class="ui-metric-v" data-fit>${value}</span><span class="md">${sub || '&nbsp;'}</span></div>`;
@@ -42,7 +108,7 @@ function limitRows(root) {   // ตารางที่มี data-limit="n": �
 
 // ===== ภาพรวม: ยอดขาย · ออเดอร์ · AOV · ชิ้น · สัดส่วนผ่าน Creator + กราฟรายวันแยกแหล่งที่มา + ตารางแหล่งที่มา =====
 async function pageOverview(el) {
-  const rows = await DB.select('v_sales_daily', '*', inRange);
+  const [rows, B, S, I, N] = await Promise.all([DB.select('v_sales_daily', '*', inRange), DB.select('v_basket_daily', '*', inRange), DB.select('v_sku_daily', '*', inRange), DB.select('v_item_daily', '*', inRange), DB.select('v_item_names')]);
   if (!rows.length) return el.innerHTML = '<div class="panel empty-note">ยังไม่มียอดขายในช่วงนี้ — อัปโหลดไฟล์คำสั่งซื้อที่หน้า "อัปโหลด"</div>';
   const T = rows.reduce((a, r) => ({ rev: a.rev + +r.revenue, ord: a.ord + +r.orders, items: a.items + +r.items }), { rev: 0, ord: 0, items: 0 });
   const bySrc = {}; rows.forEach(r => { const s = bySrc[r.source] = bySrc[r.source] || { rev: 0, ord: 0, items: 0 }; s.rev += +r.revenue; s.ord += +r.orders; s.items += +r.items; });
@@ -52,16 +118,58 @@ async function pageOverview(el) {
       ${metric('ยอดขาย', fmt(T.rev), `${ds.length} วัน · เฉลี่ย ${fmt(T.rev / ds.length)} / วัน`, 'ยอดสินค้าหลังส่วนลด <b>ไม่รวม</b>ค่าส่ง และ<b>ไม่รวม</b>ออเดอร์ที่ยกเลิก · นับตามวันที่สั่งซื้อ (เวลาไทย)')}
       ${metric('ออเดอร์', fmt(T.ord), '', '<b>ไม่รวม</b>ออเดอร์ที่ยกเลิก')}
       ${metric('AOV', fmt(T.ord ? T.rev / T.ord : 0), 'ยอดขาย ÷ ออเดอร์', 'ยอดขายเฉลี่ยต่อออเดอร์')}
-      ${metric('ชิ้นที่ขาย', fmt(T.items), '', 'จำนวนชิ้นในออเดอร์ที่ไม่ถูกยกเลิก')}
+      ${metric('ชิ้นที่ขาย', fmt(T.items), `จาก ${fmt(B.reduce((a, r) => a + +r.sets, 0))} ชุด / SKU`, 'ชิ้นจริงในออเดอร์ที่ไม่ถูกยกเลิก<br>ชุดโปรแตกเป็นชิ้นตามรหัส SKU เช่น ซื้อ 3 แถม 1 = 4 ชิ้น')}
       ${metric('ยอดผ่าน Creator', T.rev ? (aff / T.rev * 100).toFixed(1) + '%' : '—', 'ยอด ' + fmt(aff), 'ยอดของออเดอร์ที่มี Creator Handle (ไม่นับบัญชีร้านเอง) ÷ ยอดขายทั้งหมด')}
     </section>
     <div class="grid2"><section class="panel"><div class="panel-h"><h2>ยอดขายรายวัน แยกแหล่งที่มา</h2></div><div style="height:280px;"><canvas id="cSales"></canvas></div></section>
     <section class="panel"><div class="panel-h"><h2>แหล่งที่มา ${tip('ช่องทางจากคอลัมน์ Order Channel ในไฟล์คำสั่งซื้อ (Live / คลิป / หน้าสินค้า)<br>ร้าน = ไม่มี Creator หรือเป็นบัญชีร้านเอง · Creator = มี Creator Handle')}</h2></div>
       <div class="wide"><table class="ui-table tbl" data-no-sort data-no-page><thead><tr><th class="l">แหล่ง</th><th class="num">ยอดขาย</th><th class="l">สัดส่วน</th><th class="num">ออเดอร์</th></tr></thead><tbody>
       ${srcs.map(s => { const x = bySrc[s], sh = x.rev / T.rev * 100; return `<tr><td class="l"><span style="display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px;background:${srcColor(s)}"></span>${esc(s)}</td><td class="num">${fmt(x.rev)}</td><td class="l"><span class="bar"><b style="width:${sh.toFixed(1)}%;background:${srcColor(s)}"></b></span>${Math.round(sh)}%</td><td class="num">${fmt(x.ord)}</td></tr>`; }).join('')}
-      </tbody><tfoot><tr><td class="l">รวม</td><td class="num">${fmt(T.rev)}</td><td class="l">100%</td><td class="num">${fmt(T.ord)}</td></tr></tfoot></table></div></section></div>`;
-  chart('cSales', { type: 'bar', data: { labels: ds.map(dTh), datasets: srcs.map(s => ({ label: s, data: ds.map(d => rows.filter(r => r.d === d && r.source === s).reduce((a, r) => a + +r.revenue, 0)), backgroundColor: srcColor(s), borderRadius: 3, stack: 's' })) },
-    options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: css('--text2'), boxWidth: 10 } } }, scales: { x: { stacked: true, ticks: { color: css('--text3'), maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }, grid: { display: false } }, y: { stacked: true, ticks: { color: css('--text3') }, grid: { color: css('--grid') || 'rgba(0,0,0,.06)' } } } } });
+      </tbody><tfoot><tr><td class="l">รวม</td><td class="num">${fmt(T.rev)}</td><td class="l">100%</td><td class="num">${fmt(T.ord)}</td></tr></tfoot></table></div></section></div>
+    <section class="panel" id="prodPanel"><div class="panel-h"><h2>สินค้าขายดี ${tip('ตะกร้า = สินค้าที่ลูกค้ากดซื้อ (Product Name) · 1 ตะกร้ามีได้หลาย SKU<br>SKU = ตัวเลือกที่ขาย (Seller SKU) · ชุดโปรนับเป็น 1 ชุด<br>สินค้าจริง = แตกชุดโปรเป็นชิ้นตามรหัส SKU เช่น MDAZ30Cx3+MDAZ15Cx1 = MDAZ30C 3 ชิ้น + MDAZ15C 1 ชิ้น<br><b>ไม่รวม</b>ออเดอร์ที่ยกเลิก')}</h2>
+      <span style="flex:1"></span><div class="ui-presets" id="prodTabs">${Object.entries(PROD_TABS).map(([k, n]) => `<button type="button" data-t="${k}" aria-pressed="${k === PROD_TAB}">${n}</button>`).join('')}</div></div>
+      <div class="wide" id="prodBody"></div></section>`;
+  const P = prodData(B, S, I, N);
+  const drawProd = () => { const panel = document.getElementById('prodPanel'); panel.querySelectorAll('.btn.more').forEach(b => b.remove()); document.getElementById('prodBody').innerHTML = prodTable(P); limitRows(panel);
+    panel.querySelectorAll('#prodTabs button').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === PROD_TAB)); if (window.UI && UI.fit) UI.fit(); };
+  document.querySelectorAll('#prodTabs button').forEach(b => b.onclick = () => { PROD_TAB = b.dataset.t; drawProd(); });
+  drawProd();
+  chart('cSales', { type: 'bar', data: { labels: ds.map(dTh), datasets: srcs.map(s => ({ label: s, data: ds.map(d => rows.filter(r => r.d === d && r.source === s).reduce((a, r) => a + +r.revenue, 0)), backgroundColor: srcColor(s), borderColor: srcColor(s), borderWidth: 0, borderRadius: 3, stack: 's' })) },
+    options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { color: css('--text2'), boxWidth: 10 } },
+        tooltip: { uiShare: true, itemSort: (a, b) => b.parsed.y - a.parsed.y, filter: i => i.parsed.y > 0,
+          callbacks: { title: it => dFull(ds[it[0].dataIndex]), label: c => `${c.dataset.label}: ${fmt(c.parsed.y)}`, footer: it => 'รวม: ' + fmt(it.reduce((a, i) => a + i.parsed.y, 0)) } } }, scales: { x: { stacked: true, ticks: { color: css('--text3'), maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }, grid: { display: false } }, y: { stacked: true, ticks: { color: css('--text3') }, grid: { color: css('--grid') || 'rgba(0,0,0,.06)' } } } } });
+}
+
+// ===== สินค้าขายดี (ในหน้าภาพรวม): ตะกร้า / SKU / สินค้าจริง · รวมยอดจาก view รายวันของแต่ละแบบ =====
+let PROD_TAB = 'basket';
+const PROD_TABS = { basket: 'ตะกร้า', sku: 'SKU', item: 'สินค้าจริง' };
+function prodData(B, S, I, N) {
+  const P = { basket: {}, sku: {}, item: {}, names: Object.fromEntries(N.map(r => [r.item, r.name])), T: { rev: 0, sets: 0, pcs: 0, single: 0, bundle: 0 } };
+  B.forEach(r => { const x = P.basket[r.basket] = P.basket[r.basket] || { rev: 0, ord: 0, sets: 0, pcs: 0, skus: new Set() };
+    x.rev += +r.revenue; x.ord += +r.orders; x.sets += +r.sets; x.pcs += +r.pcs; (r.skus || []).forEach(k => x.skus.add(k)); P.T.rev += +r.revenue; P.T.sets += +r.sets; P.T.pcs += +r.pcs; });
+  S.forEach(r => { const x = P.sku[r.sku] = P.sku[r.sku] || { rev: 0, ord: 0, sets: 0, pcs: 0, name: r.item_name, basket: r.basket, bundle: r.is_bundle };
+    x.rev += +r.revenue; x.ord += +r.orders; x.sets += +r.sets; x.pcs += +r.pcs; });
+  I.forEach(r => { const x = P.item[r.item] = P.item[r.item] || { pcs: 0, single: 0, bundle: 0, ord: 0 };
+    x.pcs += +r.pcs; x.single += +r.pcs_single; x.bundle += +r.pcs_bundle; x.ord += +r.orders; P.T.single += +r.pcs_single; P.T.bundle += +r.pcs_bundle; });
+  return P;
+}
+function prodTable(P) {
+  const share = (v, t) => { const p = t ? v / t * 100 : 0; return `<span class="bar"><b style="width:${p.toFixed(1)}%"></b></span>${p > 0 && p < 1 ? '&lt;1' : Math.round(p)}%`; };
+  const ordH = `<th class="num">ออเดอร์ ${tip('1 ออเดอร์มีได้หลายรายการ ช่องนี้จึงไม่รวมในแถวรวม (จำนวนออเดอร์จริงดูที่แถบบน)')}</th>`;
+  const table = (head, body, foot) => `<table class="ui-table tbl prod" data-no-sort data-no-page data-limit="10"><thead><tr>${head}</tr></thead><tbody>${body}</tbody><tfoot><tr>${foot}</tr></tfoot></table>`;
+  if (PROD_TAB === 'basket') { const L = Object.entries(P.basket).sort((a, b) => b[1].rev - a[1].rev);
+    return table(`<th class="num">#</th><th class="l">ตะกร้า</th><th class="num">ยอดขาย</th><th class="l">สัดส่วน</th>${ordH}<th class="num">ชุดที่ขาย</th><th class="num">ชิ้นจริง</th>`,
+      L.map(([n, x], i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l"><span class="pn ui-trunc">${esc(n)}</span><small>${fmt(x.skus.size)} SKU</small></td><td class="num">${fmt(x.rev)}</td><td class="l">${share(x.rev, P.T.rev)}</td><td class="num">${fmt(x.ord)}</td><td class="num">${fmt(x.sets)}</td><td class="num">${fmt(x.pcs)}</td></tr>`).join(''),
+      `<td></td><td class="l">รวม ${fmt(L.length)} ตะกร้า</td><td class="num">${fmt(P.T.rev)}</td><td class="l">100%</td><td></td><td class="num">${fmt(P.T.sets)}</td><td class="num">${fmt(P.T.pcs)}</td>`); }
+  if (PROD_TAB === 'sku') { const L = Object.entries(P.sku).sort((a, b) => b[1].rev - a[1].rev);
+    return table(`<th class="num">#</th><th class="l">SKU</th><th class="num">ยอดขาย</th><th class="l">สัดส่วน</th>${ordH}<th class="num">ชุดที่ขาย</th><th class="num">ชิ้นจริง</th>`,
+      L.map(([k, x], i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l"><span class="pn"><span class="ui-code">${esc(k)}</span>${x.bundle ? ' <span class="ui-badge gold">ชุด / โปร</span>' : ''}</span><small class="ui-trunc pn">${esc(x.name || '')}</small></td><td class="num">${fmt(x.rev)}</td><td class="l">${share(x.rev, P.T.rev)}</td><td class="num">${fmt(x.ord)}</td><td class="num">${fmt(x.sets)}</td><td class="num">${fmt(x.pcs)}</td></tr>`).join(''),
+      `<td></td><td class="l">รวม ${fmt(L.length)} SKU</td><td class="num">${fmt(P.T.rev)}</td><td class="l">100%</td><td></td><td class="num">${fmt(P.T.sets)}</td><td class="num">${fmt(P.T.pcs)}</td>`); }
+  const L = Object.entries(P.item).sort((a, b) => b[1].pcs - a[1].pcs);
+  return table(`<th class="num">#</th><th class="l">สินค้าจริง</th><th class="num">ชิ้นจริง</th><th class="l">สัดส่วน</th><th class="num">ขายเดี่ยว</th><th class="num">อยู่ในชุด / โปร</th>${ordH}`,
+    L.map(([k, x], i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l">${P.names[k] && P.names[k] !== k ? `<span class="pn ui-trunc">${esc(P.names[k])}</span><small class="ui-code">${esc(k)}</small>` : `<span class="pn ui-code">${esc(k)}</span><small>ยังไม่มีชื่อ</small>`}</td><td class="num"><b>${fmt(x.pcs)}</b></td><td class="l">${share(x.pcs, P.T.pcs)}</td><td class="num">${x.single ? fmt(x.single) : dash}</td><td class="num">${x.bundle ? fmt(x.bundle) : dash}</td><td class="num">${fmt(x.ord)}</td></tr>`).join(''),
+    `<td></td><td class="l">รวม ${fmt(L.length)} รายการ</td><td class="num">${fmt(P.T.pcs)}</td><td class="l">100%</td><td class="num">${fmt(P.T.single)}</td><td class="num">${fmt(P.T.bundle)}</td><td></td>`);
 }
 
 // ===== Creator: ใครขายได้เท่าไร =====
