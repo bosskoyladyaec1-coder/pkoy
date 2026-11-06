@@ -1,0 +1,31 @@
+/* app.css — โครงหน้าแบบเบา (เมนูซ้าย · แถบบน · กล่อง) ใช้สีและชิ้นส่วนจาก ui.css (หน้าตาแบบ C เดียวกับระบบต้นแบบ) */
+body { margin:0; display:flex; min-height:100vh; }
+.sb { width:210px; flex:none; border-right:1px solid var(--border); padding:18px 12px; display:flex; flex-direction:column; gap:4px; position:sticky; top:0; height:100vh; box-sizing:border-box; }
+.sb-brand { display:flex; align-items:center; gap:10px; padding:0 8px 18px; font-size:16px; }
+.sb-logo { width:30px; height:30px; border-radius:8px; background:var(--text); color:var(--bg2); display:grid; place-items:center; font-weight:700; }
+.sb nav a { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px; color:var(--text2); text-decoration:none; font-size:14px; }
+.sb nav a:hover { background:var(--bg3); } .sb nav a.on { background:var(--bg2); color:var(--text); font-weight:600; box-shadow:inset 3px 0 0 var(--text); }
+.sb-foot { margin-top:auto; display:flex; gap:6px; } .sb-btn { flex:1; border:1px solid var(--border); background:var(--bg2); color:var(--text2); border-radius:8px; padding:7px; font:inherit; font-size:12.5px; cursor:pointer; }
+.main { flex:1; min-width:0; display:flex; flex-direction:column; }
+.topbar { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:12px; padding:14px 28px; background:var(--bg2); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.topbar h1 { margin:0; font-size:19px; } .range { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.range input[type=date] { font:inherit; font-size:13px; padding:5px 8px; border:1px solid var(--border); border-radius:8px; background:var(--bg2); color:var(--text); }
+.content { padding:20px 28px 40px; }
+.panel { background:var(--bg2); border:1px solid var(--panel-line, var(--border)); border-radius:12px; padding:14px 16px 10px; box-shadow:var(--sh, none); min-width:0; margin-bottom:16px; }
+.panel-h { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; flex-wrap:wrap; } .panel-h h2 { margin:0; font-size:15px; display:flex; align-items:center; gap:8px; }
+.hero { border:1.5px solid transparent !important; background:var(--hero) padding-box, var(--hero-line) border-box !important; box-shadow:var(--sh) !important; border-radius:14px !important; margin-bottom:16px; }
+.hero .ui-metric { background:transparent; box-shadow:1px 0 0 var(--border); } .hero .ui-metric:last-child { box-shadow:none; }
+.md { display:flex; align-items:center; gap:8px; margin-top:6px; font-size:12.5px; color:var(--text3); white-space:nowrap; overflow:hidden; }
+.grid2 { display:grid; grid-template-columns:minmax(0, 1.6fr) minmax(0, 1fr); gap:16px; align-items:stretch; } .grid2 > .panel { margin-bottom:16px; }
+@media (max-width:1100px) { .grid2 { grid-template-columns:1fr; } .sb { display:none; } }
+.tbl td.l, .tbl th.l { text-align:left; } .tbl td small { display:block; color:var(--text3); font-size:12px; }
+.bar { display:inline-block; width:60px; height:6px; border-radius:3px; background:var(--bg3); vertical-align:middle; margin-right:8px; overflow:hidden; } .bar b { display:block; height:100%; border-radius:3px; background:var(--ch-tiktok, #25F4EE); }
+.empty-note { padding:28px; text-align:center; color:var(--text3); }
+.btn { border:1px solid var(--border); background:var(--bg2); color:var(--text); border-radius:8px; padding:7px 14px; font:inherit; font-size:13px; cursor:pointer; } .btn.pri { background:var(--accent); border-color:var(--accent); color:#fff; }
+.form-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; } .form-row input, .form-row select { font:inherit; font-size:13px; padding:6px 9px; border:1px solid var(--border); border-radius:8px; background:var(--bg2); color:var(--text); }
+.wide { overflow-x:auto; }
+.gate { position:fixed; inset:0; z-index:99; display:grid; place-items:center; background:var(--bg); }
+.gate-card { width:320px; background:var(--bg2); border-radius:14px; padding:26px; box-shadow:var(--sh); display:flex; flex-direction:column; gap:12px; }
+.gate-card h1 { margin:0; font-size:20px; } .gate-card p { margin:0; color:var(--text3); font-size:13px; }
+.gate-card input { font:inherit; padding:9px 11px; border:1px solid var(--border); border-radius:8px; background:var(--bg2); color:var(--text); } .gate-card button { font:inherit; padding:9px; border:0; border-radius:8px; background:var(--text); color:var(--bg2); cursor:pointer; }
+.gate-err { color:var(--bad); font-size:12.5px; min-height:16px; }

@@ -1,0 +1,325 @@
+/* ui.css (v20261102a: หน้าตาใหม่แบบ C — สีพื้นอมน้ำเงิน · กล่องลอย · แถวรวมเส้นเข้ม · หัวกลุ่ม · ป้ายเทียบ) — หน้าตากลางของ ระบบวิเคราะห์ยอดขาย (ใช้ร่วมกันทุกหน้า: dashboard / upload / admin / health)
+   โหลดหลัง <style> ของแต่ละหน้า:  <link rel="stylesheet" href="ui.css?v=20261007a">
+   ชั้น 1 = สี + ฟอนต์ (มีผลทุกหน้าทันที ไม่เปลี่ยนขนาด/ระยะ จึงไม่ขยับ layout ของหน้าที่ยังไม่ได้ปรับ)
+   ชั้น 2 = ชิ้นส่วนใหม่ .ui-*  (ใช้ตอนปรับแต่ละหน้า)
+   โหมดมืด = ค่าเริ่มต้น · โหมดสว่าง = body.light-theme (ปุ่มเดิม toggleTheme ใช้ได้เลย)
+   .ui-light = กล่องลอยที่ ui.js วางนอก body (ปฏิทิน / tooltip) ใช้สีโหมดสว่างตาม body */
+
+/* ───────── ชั้น 1: สี ───────── */
+:root {
+  --bg: #121820; --bg2: #19212C; --bg3: #202A37;   /* (2026-11-02) หน้าตาใหม่แบบ C: เทาอมน้ำเงิน มีชั้นชัด */
+  --border: #28323F; --row-border: rgba(255,255,255,.06);
+  --text: #E9EEF4; --text2: #9BA7B6; --text3: #6B7789;
+  --accent: #D4B072; --accent2: #E6C88E; --accent-ink: #1B1408; --accent-text: #D9B678;
+  --accent-soft: rgba(212,176,114,.14);
+  --green: #45D09A; --red: #FF7A6E; --blue: #60A5FA; --purple: #A78BFA; --orange: #FB923C; --pink: #F472B6; --cyan: #22D3EE;
+  --good: var(--green); --bad: var(--red); --warn: #F2B84B;
+  --grid: rgba(255,255,255,.06);
+  --shadow-pop: 0 14px 34px rgba(0,0,0,.5);
+  /* (2026-11-02) มิติ: พื้นหน้ามีแสงจากด้านบน · กล่องลอย (เงา 2 ชั้น) · แถบสรุปขอบไล่สีเงิน-ฟ้า · ป้ายเทียบสีเขียว/แดง */
+  --pg: radial-gradient(1200px 520px at 30% -120px, #1B2633 0%, rgba(18,24,32,0) 70%), #121820;
+  --sh: 0 1px 0 rgba(255,255,255,.05) inset, 0 14px 32px -14px rgba(0,0,0,.75);
+  --panel-line: var(--border);
+  --hero: linear-gradient(180deg, #1E2835, #19212C); --hero-line: linear-gradient(115deg, #3E5069, #93ACCF 32%, #3E5069 58%, #6F86A8);
+  --alert-edge: linear-gradient(180deg, var(--red), var(--warn));
+  --up-bg: rgba(69,208,154,.13); --dn-bg: rgba(255,122,110,.13); --warn-bg: rgba(242,184,75,.14);
+  --tot-line: #7F8B9B;   /* แถวรวม: เส้นเข้มด้านบน (แบบบรรทัดรวมในงบ / ชีท) */
+  /* สีประจำช่องทาง — ใช้สีเดียวกันทุกกราฟ ทุกหน้า */
+  /* TikTok ใช้สี CI จริง: Cyan #25F4EE · Red #FE2C55 · Black — โหมดมืดเส้นเป็น Cyan, โหมดสว่างเส้นเป็นดำ (Cyan บนพื้นขาวจะจางจนมองไม่เห็น) */
+  --tt-cyan: #25F4EE; --tt-red: #FE2C55; --tt-ink: #000000;
+  --row-sum: #1E2633; --row-sum-line: #33435A;   /* (2026-10-20) แถวสรุป / แถวรวม: ฟ้าเทาเข้ม */
+  --ch-shopee: #F2643F; --ch-tiktok: var(--tt-cyan); --ch-facebook: #5B8DEF; --ch-lazada: #FF4FB0;
+  --ch-dealer: #2DD4BF; --ch-mt: #A78BFA; --ch-ads: #EF4444;
+
+  /* ขนาดตัวอักษร 6 ขนาด */
+  --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-lg: 16px; --fs-xl: 20px; --fs-kpi: 28px;
+  /* ระยะห่าง */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+  /* ความโค้งมุม: ปุ่ม/ช่องกรอก < การ์ด < เม็ดยา */
+  --r-sm: 6px; --r-md: 10px; --r-pill: 999px;
+  --font: 'Sarabun', system-ui, -apple-system, sans-serif;
+  --font-code: 'IBM Plex Mono', ui-monospace, monospace;
+}
+body.light-theme, .ui-light {
+  --bg: #ECEFF4; --bg2: #FFFFFF; --bg3: #F2F4F7;   /* (2026-11-02) พื้นเทาอมฟ้าเข้มขึ้นนิด ให้กล่องขาวลอยเป็นชั้น */
+  --border: #E1E5EB; --row-border: #EDF0F4;
+  --text: #18222F; --text2: #5A6576; --text3: #8D97A6;
+  --accent: #B8893A; --accent2: #A57A30; --accent-ink: #1B1408; --accent-text: #8A6320;
+  --accent-soft: rgba(184,137,58,.15);
+  --green: #0E7A45; --red: #CC2F36; --blue: #2563EB; --purple: #7C3AED; --orange: #EA580C; --pink: #DB2777; --cyan: #0891B2;
+  --good: var(--green); --bad: var(--red); --warn: #C9690A;
+  --grid: rgba(15,23,42,.06);
+  --shadow-pop: 0 12px 28px rgba(15,23,42,.14);
+  --pg: radial-gradient(1200px 520px at 30% -140px, #DCE4EF 0%, rgba(236,239,244,0) 70%), #ECEFF4;
+  --sh: 0 1px 2px rgba(24,34,47,.06), 0 16px 34px -18px rgba(24,34,47,.30);
+  --panel-line: transparent;   /* โหมดสว่าง: กล่องไม่มีเส้นขอบ ใช้เงาแทน */
+  --hero: linear-gradient(180deg, #FFFFFF, #F7F9FC); --hero-line: linear-gradient(115deg, #C9D3E2, #7F95B8 32%, #C9D3E2 58%, #9DAECA);
+  --up-bg: #DCF1E5; --dn-bg: #FBE1E2; --warn-bg: #FCEBD9;
+  --alert-edge: linear-gradient(180deg, #CC2F36, #C9690A);
+  --tot-line: #3A4555;
+  --row-sum: #EAF0F8; --row-sum-line: #C9D5E6;   /* (2026-10-20) แถวสรุป / แถวรวม: ฟ้าเทาอ่อน (เดิมเทา กลืนกับพื้นหลังในธีมขาว) */
+  /* (2026-10-19) สีช่องทางชุดเดียวทั้งเว็บ: TikTok / Facebook / Shopee / Lazada = สี CI ของแบรนด์ (Lazada = ชมพูจากโลโก้หัวใจ) · ตัวแทน = เขียวอมฟ้า · Modern Trade = ม่วง */
+  --ch-shopee: #EE4D2D; --ch-tiktok: var(--tt-ink); --ch-facebook: #1877F2; --ch-lazada: #F0168C;
+  --ch-dealer: #0D9488; --ch-mt: #7C3AED; --ch-ads: #DC2626;
+}
+
+/* ───────── ชั้น 1: ฟอนต์ (กฎเมฆ: Sarabun ทุกอย่าง · IBM Plex Mono เฉพาะรหัส) ───────── */
+body { font-family: var(--font); background: var(--pg, var(--bg)); color: var(--text); -webkit-font-smoothing: antialiased; }
+/* upload / admin / health ใช้ชื่อสีชุดเก่า (--surface, --muted …) → ชี้มาที่สีชุดเดียวกัน */
+:root, body.light-theme {
+  --surface: var(--bg2); --surface2: var(--bg3); --muted: var(--text2); --muted2: var(--text3); --on-accent: var(--accent-ink);
+  --success: var(--green); --danger: var(--red);
+}
+/* ⓘ เดิมของทุกหน้า → หน้าตาเดียวกับกล่องใหม่ (สี มุม เงา) */
+.ads-info-popover { background: var(--bg2) !important; border: 1px solid var(--border) !important; border-radius: var(--r-md) !important;
+  box-shadow: var(--shadow-pop) !important; color: var(--text2) !important; font-family: var(--font) !important; }
+th { font-family: var(--font) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.card-title, .filter-label, .kpi-value, .kpi-sub { font-family: var(--font); text-transform: none; letter-spacing: 0; }
+.kpi-value { font-weight: 700; }
+.num, td.num, th.num, .kpi-value, [class*="ui-metric-v"], .ui-num { font-variant-numeric: tabular-nums; }
+.mono, .code, .ui-code { font-family: var(--font-code); font-size: .92em; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+/* ───────── ชั้น 2: ชิ้นส่วนกลาง ───────── */
+
+/* แถบบน: ปุ่มช่วงวันที่ลัด */
+.ui-presets { display: inline-flex; gap: 2px; padding: 3px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r-sm); }
+.ui-presets button { font: inherit; font-size: var(--fs-sm); font-weight: 500; color: var(--text2); background: none; border: 0;
+  border-radius: 4px; padding: 5px 12px; cursor: pointer; white-space: nowrap; }
+.ui-presets button:hover { color: var(--text); }
+.ui-presets button:disabled { opacity: .35; cursor: default; }
+.ui-presets button[aria-pressed="true"] { background: var(--bg2); color: var(--text); font-weight: 600; box-shadow: inset 0 0 0 1px var(--border); }
+.ui-range { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid var(--border);
+  border-radius: var(--r-sm); background: var(--bg3); font-size: var(--fs-sm); color: var(--text); white-space: nowrap; }
+.ui-range svg { color: var(--text3); }
+.ui-fresh { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text3); white-space: nowrap; }
+.ui-fresh::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+.ui-fresh.is-late::before { background: var(--warn); }
+
+/* หัวหน้า */
+.ui-pagehead { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-4); flex-wrap: wrap; }
+.ui-pagehead h1 { margin: 0; font-size: var(--fs-xl); font-weight: 700; line-height: 1.3; display: flex; align-items: center; gap: 6px; }
+.ui-pagehead p { margin: 2px 0 0; font-size: var(--fs-sm); color: var(--text3); }
+
+/* ตัวเลขหลัก (แบบ Shopee / TikTok Seller Center): แผงเดียว แบ่งช่อง กดเลือกเข้ากราฟได้ */
+.ui-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); background: var(--bg2);
+  border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.ui-metric { position: relative; display: block; width: 100%; text-align: left; padding: 14px 16px 15px; background: var(--bg2);
+  border: 0; font: inherit; color: inherit; cursor: pointer; transition: background .15s;
+  box-shadow: 1px 0 0 var(--border), 0 1px 0 var(--border); }
+.ui-metric:hover { background: var(--bg3); }
+.ui-metric::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--m, var(--accent));
+  transform: scaleX(0); transform-origin: left; transition: transform .2s ease; }
+.ui-metric.is-on::before { transform: scaleX(1); }
+.ui-metric-l { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text2); }
+.ui-metric-l .ui-tick { width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid var(--text3); flex: none; }
+.ui-metric.is-on .ui-tick { background: var(--m, var(--accent)); border-color: var(--m, var(--accent)); }
+.ui-metrics > * { min-width: 0; }
+/* ตัวเลขในการ์ด: ui.js ย่อให้พอดีกล่องเองทุกขนาดจอ (ทั้งการ์ดใหม่ และ .kpi-value ของหน้าเดิม) */
+.kpi-value, .ui-metric-v, [data-fit] { min-width: 0; max-width: 100%; }
+.ui-metric-v { display: block; margin-top: 6px; font-size: clamp(22px, 1.8vw, var(--fs-kpi)); font-weight: 700; line-height: 1.15; letter-spacing: -.01em; white-space: nowrap; }
+.ui-metric-d { display: block; margin-top: 4px; font-size: var(--fs-xs); color: var(--text3); }
+.ui-metric.is-static { cursor: default; }
+.ui-metric.is-static::before { display: none; }
+.ui-delta { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ui-delta.good { color: var(--good); } .ui-delta.bad { color: var(--bad); } .ui-delta.flat { color: var(--text3); }
+.ui-hint { min-height: 18px; margin-top: 6px; font-size: var(--fs-xs); color: var(--warn); }
+
+/* ลิงก์ในหน้า (ดูรายละเอียด / ดูทั้งหมด) */
+.ui-link { font-size: var(--fs-sm); font-weight: 600; color: var(--accent-text); cursor: pointer; white-space: nowrap; text-decoration: none; }
+.ui-link:hover { text-decoration: underline; }
+.ui-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: var(--fs-xs); color: var(--text2); }
+.ui-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ui-legend i { width: 14px; height: 3px; border-radius: 2px; background: var(--c); }
+
+/* แท็บแบบขีดเส้นใต้ */
+.ui-tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--border); margin-bottom: var(--sp-3); overflow-x: auto; }
+.ui-tabs button { font: inherit; font-size: var(--fs-md); font-weight: 500; color: var(--text2); background: none; border: 0;
+  padding: 10px 0; margin-bottom: -1px; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; }
+.ui-tabs button:hover { color: var(--text); }
+.ui-tabs button[aria-selected="true"] { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+
+/* ตาราง */
+.ui-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.ui-table th { position: sticky; top: 0; z-index: 2; background: var(--bg2); text-align: left; font-size: var(--fs-xs); font-weight: 600;
+  color: var(--text2); padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.ui-table th.num, .ui-table td.num { text-align: right; }
+.ui-table th[data-sort] { cursor: pointer; user-select: none; }
+.ui-table th[data-sort]::after { content: "↕"; margin-left: 4px; color: var(--text3); font-size: 11px; }
+.ui-table th[aria-sort="descending"]::after { content: "↓"; color: var(--accent-text); }
+.ui-table th[aria-sort="ascending"]::after { content: "↑"; color: var(--accent-text); }
+.ui-table td { padding: 10px 12px; border-bottom: 1px solid var(--row-border); white-space: nowrap; }
+.ui-table tbody tr:hover td { background: var(--bg3); }
+.ui-table tfoot td { font-weight: 700; border-top: 1px solid var(--border); border-bottom: 0; }
+.ui-muted { color: var(--text3); }
+/* จุด/ป้าย TikTok มีเงา Cyan + Red เหลื่อมกันแบบโลโก้ ใส่ class ui-tt */
+.ui-tt { box-shadow: -1.5px -1px 0 var(--tt-cyan), 1.5px 1px 0 var(--tt-red); }
+.ui-chdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c); margin-right: 8px; vertical-align: 1px; }
+.ui-share { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.ui-share-track { width: 48px; height: 6px; border-radius: 3px; background: var(--bg3); overflow: hidden; }
+.ui-share-track b { display: block; height: 100%; background: var(--c, var(--accent)); border-radius: 3px; }
+
+/* แบ่งหน้า + ต่อหน้า (กฎเมฆ: ไม่ใช้กล่องเลื่อน) */
+.ui-pager { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-top: var(--sp-3);
+  font-size: var(--fs-xs); color: var(--text3); flex-wrap: wrap; }
+.ui-pager-btns { display: flex; gap: 4px; }
+.ui-pager button { min-width: 28px; height: 28px; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid var(--border);
+  background: var(--bg2); color: var(--text2); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.ui-pager button[aria-current="page"] { background: var(--accent-soft); border-color: transparent; color: var(--accent-text); font-weight: 700; }
+.ui-pager button:disabled { opacity: .4; cursor: default; }
+
+/* Dropdown (แบบเมนูสถานะหน้า Supply Chain) */
+.ui-dd { position: relative; display: inline-block; }
+.ui-dd-btn { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px 0 12px; border: 1px solid var(--border);
+  border-radius: var(--r-sm); background: var(--bg3); color: var(--text); font: inherit; font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; }
+.ui-dd-btn small { color: var(--text3); font-size: var(--fs-xs); }
+.ui-dd-btn::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid var(--text3); border-bottom: 1.5px solid var(--text3);
+  transform: rotate(45deg) translateY(-2px); margin-left: 2px; }
+.ui-dd-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; min-width: 220px; padding: 6px; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); display: none; }
+.ui-dd.is-open .ui-dd-menu { display: block; }
+.ui-dd-h { padding: 8px 10px 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--text3); }
+.ui-dd-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: var(--r-sm);
+  background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.ui-dd-item:hover { background: var(--bg3); }
+.ui-dd-item[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.ui-dd-item[aria-selected="true"]::after { content: "✓"; margin-left: auto; }
+
+/* ⓘ อธิบายคำ — กล่องลอยวางตำแหน่งด้วย JS (position: fixed) จะได้ไม่โดนกล่องที่ตัดขอบบัง */
+.ui-info { position: relative; display: inline-flex; }
+.ui-info > button { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--text3); background: none; color: var(--text3);
+  font: 600 10px/1 var(--font); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.ui-info > button:hover, .ui-info.is-open > button { border-color: var(--accent); color: var(--accent-text); }
+.ui-pop { position: absolute; top: calc(100% + 8px); left: -12px; z-index: 70; width: 270px; padding: 12px 14px; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop); font-size: var(--fs-sm); line-height: 1.6;
+  color: var(--text2); font-weight: 400; text-align: left; white-space: normal; display: none; }
+.ui-pop b { display: block; color: var(--text); font-weight: 600; margin-bottom: 2px; }
+.ui-info.is-open .ui-pop { display: block; }
+
+/* ป้าย / แถบสถานะ / ว่าง / กำลังโหลด */
+.ui-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--r-pill); font-size: var(--fs-xs);
+  font-weight: 600; background: var(--bg3); color: var(--text2); white-space: nowrap; }
+.ui-badge.good { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.ui-badge.bad  { color: var(--bad);  background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.ui-badge.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.ui-badge.gold { color: var(--accent-text); background: var(--accent-soft); }
+.ui-status { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--r-sm); font-size: var(--fs-sm);
+  color: var(--text2); background: color-mix(in srgb, var(--good) 9%, var(--bg2)); border: 1px solid color-mix(in srgb, var(--good) 22%, var(--border)); }
+.ui-status.warn { background: color-mix(in srgb, var(--warn) 10%, var(--bg2)); border-color: color-mix(in srgb, var(--warn) 30%, var(--border)); }
+.ui-status b { color: var(--text); font-weight: 600; }
+.ui-empty { padding: 36px 16px; text-align: center; color: var(--text3); font-size: var(--fs-sm); }
+.ui-empty b { display: block; color: var(--text2); font-size: var(--fs-md); margin-bottom: 4px; }
+.ui-skel { border-radius: var(--r-sm); background: linear-gradient(90deg, var(--bg3) 0%, var(--border) 50%, var(--bg3) 100%);
+  background-size: 200% 100%; animation: ui-shimmer 1.3s linear infinite; }
+@keyframes ui-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* ปุ่มหลัก: ตัวอักษรเข้มบนสีทอง อ่านง่ายทั้ง 2 โหมด */
+.btn-primary { color: var(--accent-ink); }
+
+/* ช่องวันที่ / เดือน (ui.js เปลี่ยนให้อัตโนมัติ แสดง "7 ต.ค. 2569" เหมือนกันทุกเครื่อง) */
+.ui-native-hidden { display: none !important; }
+.ui-datebtn { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid var(--border);
+  border-radius: var(--r-sm); background: var(--bg3); color: var(--text); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+  white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ui-datebtn svg { color: var(--text3); flex: none; }
+.ui-datebtn:hover { border-color: var(--text3); }
+.ui-datebtn.is-empty span { color: var(--text3); }
+.ui-datebtn:disabled { opacity: .5; cursor: default; }
+.ui-cal { position: fixed; z-index: 200; width: 284px; padding: 10px; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--r-md); box-shadow: var(--shadow-pop); font-family: var(--font); color: var(--text); }
+.ui-cal-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.ui-cal-h b { font-size: var(--fs-md); font-weight: 600; }
+.ui-cal-nav { width: 30px; height: 30px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text2); font-size: 18px; cursor: pointer; }
+.ui-cal-nav:hover { background: var(--bg3); color: var(--text); }
+.ui-cal-w, .ui-cal-g { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.ui-cal-w span { padding: 4px 0; font-size: var(--fs-xs); color: var(--text3); }
+.ui-cal-mg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ui-cal-d, .ui-cal-m { height: 34px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text); font: inherit;
+  font-size: var(--fs-sm); cursor: pointer; font-variant-numeric: tabular-nums; }
+.ui-cal-d:hover, .ui-cal-m:hover { background: var(--bg3); }
+.ui-cal-d.is-out { color: var(--text3); }
+.ui-cal-d.is-today, .ui-cal-m.is-today { box-shadow: inset 0 0 0 1px var(--accent); }
+.ui-cal-d[aria-selected="true"], .ui-cal-m[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.ui-cal-d:disabled, .ui-cal-m:disabled { opacity: .3; cursor: default; background: none; }
+.ui-cal-f { display: flex; justify-content: flex-end; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--row-border); }
+.ui-cal-link { padding: 4px 8px; border: 0; border-radius: var(--r-sm); background: none; color: var(--accent-text); font: inherit;
+  font-size: var(--fs-sm); font-weight: 600; cursor: pointer; }
+.ui-cal-link:hover { background: var(--accent-soft); }
+.ui-cal-link:disabled { opacity: .4; cursor: default; }
+
+/* Tooltip กราฟ (ui.js ใส่ให้ทุกกราฟ) — กล่องการ์ด: วันที่ด้านบน · สีเส้น · ชื่อ · ค่า (ชิดขวา) · % สัดส่วน · รวม */
+.ui-ctip { position: absolute; z-index: 20; pointer-events: none; min-width: 190px; max-width: 320px; padding: 10px 12px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-pop);
+  font-family: var(--font); font-size: var(--fs-sm); line-height: 1.5; color: var(--text2); opacity: 0;
+  transition: opacity .12s ease, left .08s ease, top .08s ease; white-space: nowrap; }
+.ui-ctip-h { margin-bottom: 6px; font-weight: 600; color: var(--text); }
+.ui-ctip-r { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; align-items: center; column-gap: 8px; padding: 2px 0; }
+.ui-ctip-r i { width: 12px; height: 3px; border-radius: 2px; background: var(--c); }
+.ui-ctip-r span { overflow: hidden; text-overflow: ellipsis; }
+.ui-ctip-r b { color: var(--text); font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; padding-left: 12px; }
+.ui-ctip-r em { font-style: normal; color: var(--text3); font-size: var(--fs-xs); text-align: right; min-width: 40px; font-variant-numeric: tabular-nums; }
+.ui-ctip-f { display: flex; justify-content: space-between; gap: 16px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--row-border); }
+.ui-ctip-f b { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Tooltip ตอนชี้เมาส์ (data-tip / title / ข้อความถูกตัด) — กล่องการ์ดเหมือน ⓘ ใช้ทั้งเว็บ */
+.ui-tip { position: fixed; z-index: 3000; max-width: 320px; padding: 9px 12px; border-radius: 8px; background: var(--bg2); border: 1px solid var(--border);
+  color: var(--text2); font: 400 12px/1.6 var(--font); text-align: left; pointer-events: none; opacity: 0; transition: opacity .12s ease;
+  box-shadow: 0 6px 20px rgba(0,0,0,.22); white-space: pre-line; }   /* (2026-10-14) การ์ดสว่าง/มืดตามธีม แบบเดียวกับ ⓘ · รองรับขึ้นบรรทัดใหม่ */
+.ui-tip.has-img { padding: 8px; max-width: 260px; }   /* (2026-10-14) tooltip แบบมีภาพ */
+.ui-tip-img { display: block; max-width: 244px; max-height: 320px; border-radius: 6px; background: var(--bg3); }
+.ui-tip.has-img > div { margin-top: 6px; }
+.ui-tip-noimg { font-size: 11.5px; color: var(--text3); padding: 4px 2px; }
+.ui-tip.is-on { opacity: 1; }
+.ui-trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== (2026-10-15) หน้าตาเดียวกันทั้งเว็บ — ปรับส่วนประกอบของหน้าเดิมให้เข้าชุดกับหน้าใหม่ (แนว Seller Centre) =====
+   ใช้ body นำหน้าเพื่อให้ชนะสไตล์เดิมในแต่ละหน้า โดยไม่ต้องแก้โครงหน้า · ตัวเลขใช้ฟอนต์เดียวกับข้อความ (เลขกว้างเท่ากัน อ่านง่าย) */
+body .card { border-radius: 12px; padding: 18px 20px; border-color: var(--panel-line); box-shadow: var(--sh); }   /* (2026-11-02) กล่องลอย */
+body .card-title { font-family: 'Sarabun', sans-serif; text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 500; color: var(--text3); margin-bottom: 8px; }
+body .kpi-value { font-family: 'Sarabun', sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; font-weight: 700; }
+body .section-title { font-weight: 700; font-size: 14.5px; }
+body th { font-family: 'Sarabun', sans-serif; letter-spacing: 0; font-size: 11.5px; font-weight: 600; color: var(--text3); }
+body td { font-variant-numeric: tabular-nums; }
+body .btn { border-radius: 8px; }
+body .btn-ghost:hover { border-color: var(--accent); color: var(--text); }
+body .empty { font-size: 13px; color: var(--text3); }
+
+/* (2026-10-20) แถวสรุป / แถวรวมทุกตาราง: ใส่ class="ui-sum" ที่ <tr> */
+tr.ui-sum > td, tr.ui-sum > th { background: transparent; box-shadow: inset 0 2px 0 var(--tot-line); border-top: 0; font-weight: 700; color: var(--text); }   /* (2026-11-02) เส้นเข้มด้านบน + ตัวหนา แทนพื้นฟ้าเทา */
+.ui-table tfoot td { box-shadow: inset 0 2px 0 var(--tot-line); border-top: 0; }
+/* (2026-11-02) หัวกลุ่มในตาราง: แถบซ้าย + ตัวหนา · .good = เขียว · .bad = แดง · ไม่มี class = สีปกติ (ไม่มีความหมายดี/ร้าย) */
+tr.ui-grp > td { background: var(--grp-bg, transparent); font-size: 12.5px; font-weight: 700; color: var(--grp, var(--text)); padding: 9px 10px 6px 12px; text-align: left;
+  box-shadow: inset 3px 0 0 var(--grp, var(--text3)); border-bottom: 1px solid var(--row-border); white-space: normal; }
+tr.ui-grp.good > td { --grp: var(--good); --grp-bg: var(--up-bg); } tr.ui-grp.bad > td { --grp: var(--bad); --grp-bg: var(--dn-bg); }
+tr.ui-grp:hover > td { background: var(--grp-bg, transparent) !important; }
+/* (2026-11-02) ป้ายเทียบ: เขียว = ดี · แดง = ไม่ดี · เทา = เปลี่ยนน้อย */
+.ui-chip { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; background: var(--bg3); color: var(--text3); }
+.ui-chip.up { background: var(--up-bg); color: var(--good); } .ui-chip.dn { background: var(--dn-bg); color: var(--bad); }
+/* (2026-11-02) กล่องเรื่องที่ต้องดู: แถบไล่สีแดง→เหลืองด้านซ้าย */
+.ui-alertbox { position: relative; overflow: hidden; } .ui-alertbox::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--alert-edge); }
+
+/* (2026-10-20) กล่องยืนยัน / แจ้งเตือน ของเว็บเอง (uiConfirm / uiAlert / uiPrompt ใน ui.js) */
+.ui-dlg-bg { position: fixed; inset: 0; z-index: 9000; background: rgba(15,16,20,.38); backdrop-filter: blur(1.5px); display: flex; align-items: flex-start; justify-content: center; padding: 14vh 16px 16px; animation: uiDlgIn .12s ease-out; }
+.ui-dlg { width: 100%; max-width: 400px; background: var(--bg2); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.25); padding: 20px 20px 16px; font-family: inherit; }
+.ui-dlg .hd { display: flex; gap: 12px; align-items: flex-start; }
+.ui-dlg .ic { flex: none; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; background: var(--bg3); color: var(--text2); }
+.ui-dlg .ic.good { background: rgba(34,197,94,.14); color: #15803d; } .ui-dlg .ic.bad { background: rgba(239,68,68,.13); color: #b91c1c; }
+.ui-dlg .tx { min-width: 0; } .ui-dlg .t { font-size: 15.5px; font-weight: 700; color: var(--text); line-height: 1.4; margin-top: 5px; word-break: break-word; }
+.ui-dlg .b { font-size: 13px; color: var(--text2); margin-top: 4px; line-height: 1.55; white-space: pre-line; word-break: break-word; }
+.ui-dlg .in { width: 100%; box-sizing: border-box; margin-top: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; font: inherit; font-size: 13.5px; color: var(--text); outline: none; }
+.ui-dlg .in:focus { border-color: var(--accent); }
+.ui-dlg .ft { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.ui-dlg .btn { border: 0; border-radius: 9px; padding: 8px 18px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.ui-dlg .btn.ghost { background: none; border: 1px solid var(--border); color: var(--text2); }
+.ui-dlg .btn.good { background: #16a34a; color: #fff; } .ui-dlg .btn.bad { background: #dc2626; color: #fff; } .ui-dlg .btn.pri { background: var(--accent); color: #111; }
+.ui-dlg .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@keyframes uiDlgIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* (2026-10-20) ⓘ ทุกหน้าหน้าตาเดียวกัน · ชี้เมาส์แล้วขึ้น .ui-tip กล่องเดียวกัน (ไม่ต้องคลิก) */
+.ui-tip.is-html { white-space: normal; }
+.ui-tip.is-html b { color: var(--text); }
+.ads-info-wrap > .ads-info-popover:not(#ttProductPicker), .ads-info-wrap > [id^="tip-"] { display: none !important; }
+.ads-info-wrap > span:first-child, .pr-i, .pp-i, .ui-i { color: var(--text3) !important; font-size: 12px !important; font-weight: 400 !important; cursor: help !important;
+  font-style: normal; border: 0 !important; width: auto !important; height: auto !important; display: inline !important; vertical-align: baseline !important; }
+.ads-info-wrap > span:first-child:hover, .pr-i:hover, .pp-i:hover, .ui-i:hover { color: var(--text2) !important; }

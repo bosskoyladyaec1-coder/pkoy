@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TikTok Sales</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ui.css?v=1"><link rel="stylesheet" href="app.css?v=1">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+<!-- โครงหน้า: เมนูซ้าย + แถบบน (ชื่อหน้า · ช่วงวันที่) + เนื้อหาแต่ละหน้า (#overview #creators #products #stock #money #upload) -->
+<aside class="sb">
+  <div class="sb-brand"><span class="sb-logo">T</span><b id="appName">TikTok Sales</b></div>
+  <nav id="nav"></nav>
+  <div class="sb-foot"><button type="button" class="sb-btn" onclick="toggleTheme()" title="สลับโหมดสว่าง / มืด">◐ โหมด</button><button type="button" class="sb-btn" onclick="DB.signOut()" id="btnOut" title="ออกจากระบบ">⎋ ออก</button></div>
+</aside>
+<main class="main">
+  <header class="topbar"><h1 id="pageTitle">ภาพรวม</h1><span id="pageSub" class="ui-muted"></span><span style="flex:1"></span>
+    <div class="range" id="range"><div class="ui-presets" id="presets"></div><input type="date" id="dFrom"><span class="ui-muted">–</span><input type="date" id="dTo"></div></header>
+  <div class="content" id="content"></div>
+</main>
+<script src="config.js?v=1"></script>
+<script src="db.js?v=1"></script>
+<script src="ui.js?v=1"></script>
+<script src="upload.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body></html>
