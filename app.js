@@ -292,7 +292,8 @@ async function route() {
   try { await ({ overview: pageOverview, creators: pageCreators, products: pageProducts, stock: pageStock, money: pageMoney, upload: pageUpload })[pg[0]](el); limitRows(el); if (window.UI && UI.fit) UI.fit(); }
   catch (e) { el.innerHTML = `<div class="panel empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`; }
 }
-document.getElementById('appName').textContent = (window.APP && APP.NAME) || 'Sales'; document.title = document.getElementById('appName').textContent;
+document.getElementById('appName').textContent = (window.APP && APP.NAME) || 'ระบบวิเคราะห์ยอดขาย'; document.title = document.getElementById('appName').textContent;
+document.querySelector('.sb-logo').innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg>';   // โลโก้กลาง ไม่ผูกกับช่องทางใด
 document.getElementById('nav').innerHTML = PAGES.map(([id, n]) => `<a href="#${id}" data-p="${id}">${n}</a>`).join('');
 if (!(window.APP && APP.SHARED_LOGIN_EMAIL)) document.getElementById('btnOut').style.display = 'none';
 initRange(); window.addEventListener('hashchange', route); DB.ready.then(route);
