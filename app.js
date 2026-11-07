@@ -33,7 +33,7 @@ function presets() {
   return { 'วันนี้': [D(y, m, d), D(y, m, d)], 'เมื่อวาน': [D(y, m, d - 1), D(y, m, d - 1)], '7 วันล่าสุด': [D(y, m, d - 6), D(y, m, d)],
     '30 วันล่าสุด': [D(y, m, d - 29), D(y, m, d)], 'เดือนนี้': [D(y, m, 1), D(y, m, d)], 'เดือนก่อน': [D(y, m - 1, 1), D(y, m, 0)] };
 }
-const presetOf = (a, b) => { const p = presets(); return Object.keys(p).find(k => p[k][0] === a && p[k][1] === b) || ''; };
+const presetOf = (a, b) => { const p = presets(); return ['เดือนนี้', 'เดือนก่อน', ...Object.keys(p)].find(k => p[k][0] === a && p[k][1] === b) || ''; };   // ตรงหลายช่วง (เช่น 1–7 = เดือนนี้ = 7 วัน) ใช้ชื่อเดือนก่อน
 const CAL_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
 function drawRangeBtn() {
   const t = presetOf(RANGE.from, RANGE.to), b = document.getElementById('rpBtn');
@@ -61,7 +61,7 @@ function drawRP() {
   RP.pop.innerHTML = `<div class="rp-side">${Object.keys(presets()).map(k => `<button type="button" data-p="${k}">${k}</button>`).join('')}</div>
     <div class="rp-main"><div class="rp-nav"><button type="button" class="rp-arrow" data-nav="-1" aria-label="เดือนก่อน">‹</button><button type="button" class="rp-arrow" data-nav="1" aria-label="เดือนถัดไป"${canNext ? '' : ' disabled'}>›</button></div>
       <div class="rp-cals">${monthHTML(v.getFullYear(), v.getMonth())}${monthHTML(v2.getFullYear(), v2.getMonth())}</div>
-      <div class="rp-foot"><span class="rp-sel"></span><button type="button" class="btn" data-act="cancel">ยกเลิก</button><button type="button" class="btn pri" data-act="ok">ใช้ช่วงนี้</button></div></div>`;
+      <div class="rp-foot"><span class="rp-sel"></span><button type="button" class="btn" data-act="cancel">ยกเลิก</button><button type="button" class="btn pri rp-go" data-act="ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>ค้นหา</button></div></div>`;
   paintRP();
   const r = document.getElementById('rpBtn').getBoundingClientRect(), w = RP.pop.offsetWidth;
   RP.pop.style.top = (r.bottom + 8) + 'px'; RP.pop.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + 'px';
@@ -74,7 +74,7 @@ function openRP() {
   document.body.appendChild(pop); document.getElementById('rpBtn').setAttribute('aria-expanded', 'true'); drawRP();
   pop.addEventListener('click', ev => {
     ev.stopPropagation();
-    const p = ev.target.closest('[data-p]'); if (p) { const [a, b] = presets()[p.dataset.p]; closeRP(); return setRange(a, b); }
+    const p = ev.target.closest('[data-p]'); if (p) { [RP.a, RP.b] = presets()[p.dataset.p]; RP.hover = null; const e = pDate(RP.b); RP.view = new Date(e.getFullYear(), e.getMonth() - 1, 1); return drawRP(); }
     const nav = ev.target.closest('[data-nav]'); if (nav) { if (!nav.disabled) { RP.view = new Date(RP.view.getFullYear(), RP.view.getMonth() + +nav.dataset.nav, 1); drawRP(); } return; }
     const d = ev.target.closest('[data-d]');
     if (d && !d.disabled) { const x = d.dataset.d; if (RP.b || x < RP.a) { RP.a = x; RP.b = null; } else RP.b = x; RP.hover = null; return paintRP(); }   // กดวันแรก แล้วกดวันสุดท้าย (กดวันเดิมซ้ำ = วันเดียว)
@@ -88,7 +88,7 @@ function initRange() {
   if (!document.getElementById('rpBtn')) box.innerHTML = '<button type="button" class="rp-btn" id="rpBtn" aria-haspopup="dialog" aria-expanded="false"></button>';
   document.getElementById('rpBtn').onclick = e => { e.stopPropagation(); openRP(); };
   document.addEventListener('click', e => { if (RP && !RP.pop.contains(e.target)) closeRP(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRP(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRP(); if (e.key === 'Enter' && RP && RP.b) { e.preventDefault(); const { a, b } = RP; closeRP(); setRange(a, b); } });
   addEventListener('resize', closeRP);
   const [a, b] = presets()['เดือนนี้']; RANGE = { from: a, to: b }; drawRangeBtn();
 }
@@ -97,9 +97,21 @@ const metric = (label, value, sub, info) => `<div class="ui-metric is-static"><s
 const chart = (id, cfg) => { if (CHARTS[id]) CHARTS[id].destroy(); const el = document.getElementById(id); if (el) CHARTS[id] = new Chart(el, cfg); };
 const css = v => getComputedStyle(document.body).getPropertyValue(v).trim();
 const dash = '<span class="ui-muted">—</span>';
+// ที่จำข้อมูลชั่วคราว 5 นาที: สลับหน้าไปมา / เลือกช่วงเดิม ไม่ต้องโหลดใหม่ · อัปไฟล์หรือแก้สต็อกแล้วล้างทิ้ง
+const CACHE = new Map();
+function sel(view, ranged = true) {
+  const k = view + (ranged ? '|' + RANGE.from + '|' + RANGE.to : ''), hit = CACHE.get(k);
+  if (hit && Date.now() - hit.t < 300000) return hit.p;
+  const p = DB.select(view, '*', ranged ? inRange : undefined).catch(e => { CACHE.delete(k); throw e; });
+  CACHE.set(k, { p, t: Date.now() }); return p;
+}
+function clearCache() { CACHE.clear(); }
+// โครงหน้ารอโหลด (แทนข้อความ "กำลังโหลด…" ที่ทำให้หน้ากระพริบ)
+const SKEL = `<section class="ui-metrics hero" aria-busy="true">${'<div class="ui-metric is-static"><span class="ui-skel sk-l"></span><span class="ui-skel sk-v"></span><span class="ui-skel sk-s"></span></div>'.repeat(4)}</section>
+  <div class="grid2"><section class="panel"><div class="ui-skel sk-box"></div></section><section class="panel"><div class="ui-skel sk-box"></div></section></div>`;
 function limitRows(root) {   // ตารางที่มี data-limit="n": แสดง n แถวแรก + ปุ่มแสดงทั้งหมด (แถวรวมด้านล่างรวมทุกแถวเสมอ)
-  root.querySelectorAll('table[data-limit]').forEach(t => {
-    const n = +t.dataset.limit, extra = [...t.tBodies[0].rows].slice(n); if (!extra.length) return;
+  root.querySelectorAll('table[data-limit]:not([data-limited])').forEach(t => {
+    t.dataset.limited = '1'; const n = +t.dataset.limit, extra = [...t.tBodies[0].rows].slice(n); if (!extra.length) return;
     const b = document.createElement('button'); b.type = 'button'; b.className = 'btn more';
     const set = open => { extra.forEach(r => r.hidden = !open); b.textContent = open ? `ย่อเหลือ ${n} แถว` : `แสดงทั้งหมด ${fmt(n + extra.length)} แถว`; b.onclick = () => set(!open); };
     set(false); t.closest('.panel').querySelector('.panel-h').appendChild(b);
@@ -108,7 +120,7 @@ function limitRows(root) {   // ตารางที่มี data-limit="n": �
 
 // ===== ภาพรวม: ยอดขาย · ออเดอร์ · AOV · ชิ้น · สัดส่วนผ่าน Creator + กราฟรายวันแยกแหล่งที่มา + ตารางแหล่งที่มา =====
 async function pageOverview(el) {
-  const [rows, B, S, I, N] = await Promise.all([DB.select('v_sales_daily', '*', inRange), DB.select('v_basket_daily', '*', inRange), DB.select('v_sku_daily', '*', inRange), DB.select('v_item_daily', '*', inRange), DB.select('v_item_names')]);
+  const [rows, B, S, I, N, STA] = await Promise.all([sel('v_sales_daily'), sel('v_basket_daily'), sel('v_sku_daily'), sel('v_item_daily'), sel('v_item_names', false), sel('v_status_daily')]);
   if (!rows.length) return el.innerHTML = '<div class="panel empty-note">ยังไม่มียอดขายในช่วงนี้ — อัปโหลดไฟล์คำสั่งซื้อที่หน้า "อัปโหลด"</div>';
   const T = rows.reduce((a, r) => ({ rev: a.rev + +r.revenue, ord: a.ord + +r.orders, items: a.items + +r.items }), { rev: 0, ord: 0, items: 0 });
   const bySrc = {}; rows.forEach(r => { const s = bySrc[r.source] = bySrc[r.source] || { rev: 0, ord: 0, items: 0 }; s.rev += +r.revenue; s.ord += +r.orders; s.items += +r.items; });
@@ -118,9 +130,10 @@ async function pageOverview(el) {
       ${metric('ยอดขาย', fmt(T.rev), `${ds.length} วัน · เฉลี่ย ${fmt(T.rev / ds.length)} / วัน`, 'ยอดสินค้าหลังส่วนลด <b>ไม่รวม</b>ค่าส่ง และ<b>ไม่รวม</b>ออเดอร์ที่ยกเลิก · นับตามวันที่สั่งซื้อ (เวลาไทย)')}
       ${metric('ออเดอร์', fmt(T.ord), '', '<b>ไม่รวม</b>ออเดอร์ที่ยกเลิก')}
       ${metric('AOV', fmt(T.ord ? T.rev / T.ord : 0), 'ยอดขาย ÷ ออเดอร์', 'ยอดขายเฉลี่ยต่อออเดอร์')}
-      ${metric('ชิ้นที่ขาย', fmt(T.items), `จาก ${fmt(B.reduce((a, r) => a + +r.sets, 0))} ชุด / SKU`, 'ชิ้นจริงในออเดอร์ที่ไม่ถูกยกเลิก<br>ชุดโปรแตกเป็นชิ้นตามรหัส SKU เช่น ซื้อ 3 แถม 1 = 4 ชิ้น')}
+      ${metric('ชิ้นที่ขาย', fmt(T.items), `ขายได้ ${fmt(B.reduce((a, r) => a + +r.sets, 0))} ชุด`, 'ชิ้นจริงในออเดอร์ที่ไม่ถูกยกเลิก<br>ชุดโปรแตกเป็นชิ้นตามรหัส SKU เช่น ซื้อ 3 แถม 1 = 4 ชิ้น')}
       ${metric('ยอดผ่าน Creator', T.rev ? (aff / T.rev * 100).toFixed(1) + '%' : '—', 'ยอด ' + fmt(aff), 'ยอดของออเดอร์ที่มี Creator Handle (ไม่นับบัญชีร้านเอง) ÷ ยอดขายทั้งหมด')}
     </section>
+    <section class="panel"><div class="panel-h"><h2>สถานะออเดอร์ ${tip('นับตามวันที่สั่งซื้อ ทุกออเดอร์รวมที่ยกเลิก<br>นับเป็นยอดขาย = ส่งสำเร็จ + กำลังส่ง + คืนสินค้า (ตรงกับออเดอร์ / ยอดขายในแถบบน)<br>% = สัดส่วนของออเดอร์ทั้งหมด · ตีกลับเทียบกับพัสดุที่ส่งออกไปแล้ว')}</h2><span class="ui-muted">ออเดอร์ทั้งหมด ${statusTotal(STA)} (รวมยกเลิก)</span></div>${statusStrip(STA)}</section>
     <div class="grid2"><section class="panel"><div class="panel-h"><h2>ยอดขายรายวัน แยกแหล่งที่มา</h2></div><div style="height:280px;"><canvas id="cSales"></canvas></div></section>
     <section class="panel"><div class="panel-h"><h2>แหล่งที่มา ${tip('ช่องทางจากคอลัมน์ Order Channel ในไฟล์คำสั่งซื้อ (Live / คลิป / หน้าสินค้า)<br>ร้าน = ไม่มี Creator หรือเป็นบัญชีร้านเอง · Creator = มี Creator Handle')}</h2></div>
       <div class="wide"><table class="ui-table tbl" data-no-sort data-no-page><thead><tr><th class="l">แหล่ง</th><th class="num">ยอดขาย</th><th class="l">สัดส่วน</th><th class="num">ออเดอร์</th></tr></thead><tbody>
@@ -141,6 +154,21 @@ async function pageOverview(el) {
           callbacks: { title: it => dFull(ds[it[0].dataIndex]), label: c => `${c.dataset.label}: ${fmt(c.parsed.y)}`, footer: it => 'รวม: ' + fmt(it.reduce((a, i) => a + i.parsed.y, 0)) } } }, scales: { x: { stacked: true, ticks: { color: css('--text3'), maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }, grid: { display: false } }, y: { stacked: true, ticks: { color: css('--text3') }, grid: { color: css('--grid') || 'rgba(0,0,0,.06)' } } } } });
 }
 
+// ===== สถานะออเดอร์: แถบสัดส่วน + ตัวเลขแต่ละสถานะ (นับตามวันที่สั่งซื้อ · รวมออเดอร์ที่ยกเลิก) =====
+const ST = [['ส่งสำเร็จ', 'var(--good)', 1, 'ลูกค้าได้รับของแล้ว (เสร็จสมบูรณ์ / จัดส่งสำเร็จ)'], ['กำลังส่ง', 'var(--blue)', 1, 'ยังไม่ถึงมือลูกค้า (ที่จะจัดส่ง / อยู่ระหว่างขนส่ง)'], ['คืนสินค้า', 'var(--warn)', 1, 'ลูกค้าขอคืนสินค้า / คืนเงินหลังได้รับของ'],
+  ['ตีกลับ', 'var(--bad)', 0, 'ระบบยกเลิกเพราะส่งไม่สำเร็จ (การจัดส่งพัสดุไม่สำเร็จ / พัสดุเสียหาย / สูญหาย)'], ['ยกเลิก', 'var(--text3)', 0, 'ลูกค้าหรือร้านยกเลิกก่อนส่ง'], ['ไม่ชำระเงิน', 'color-mix(in srgb, var(--text3) 45%, transparent)', 0, 'ระบบยกเลิกเพราะลูกค้าไม่ชำระเงินตามกำหนด']];
+function statusStrip(rows, compact) {
+  const by = {}; let all = 0; rows.forEach(r => { const x = by[r.state] = by[r.state] || { n: 0, rev: 0, why: {} }; x.n += +r.orders; x.rev += +r.revenue; all += +r.orders; if (r.reason) x.why[r.reason] = (x.why[r.reason] || 0) + +r.orders; });
+  if (!all) return `<div class="ui-muted" style="padding:6px 0">ยังไม่มีออเดอร์ในช่วงนี้</div>`;
+  const n = k => (by[k] || { n: 0 }).n, sent = n('ส่งสำเร็จ') + n('คืนสินค้า') + n('ตีกลับ'), pct = v => (all ? v / all * 100 : 0).toFixed(1) + '%';
+  const item = ([k, c, , info]) => { const x = by[k] || { n: 0, rev: 0, why: {} }, why = Object.entries(x.why).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([w, v]) => `${w} ${fmt(v)}`).join('<br>');
+    return `<div class="st-item${x.n ? '' : ' is-zero'}"><span class="st-dot" style="background:${c}"></span><div><div class="st-name">${k} ${tip(info + (why && k !== 'ส่งสำเร็จ' ? '<br><br>เหตุผล:<br>' + why : ''))}</div>
+      <div class="st-num"><b>${fmt(x.n)}</b><span>${pct(x.n)}</span></div><small>${k === 'ตีกลับ' && sent ? `${(x.n / sent * 100).toFixed(1)}% ของที่ส่งออกไป` : 'ยอด ' + fmt(x.rev)}</small></div></div>`; };
+  return `<div class="st-bar">${ST.filter(([k]) => n(k)).map(([k, c]) => `<i style="flex:${n(k)};background:${c}" data-tip="${k} ${fmt(n(k))} ออเดอร์ (${pct(n(k))})"></i>`).join('')}</div>
+    <div class="st-legend${compact ? ' compact' : ''}"><div class="st-grp"><span class="st-gl good">นับเป็นยอดขาย</span>${ST.filter(x => x[2]).map(item).join('')}</div><div class="st-grp"><span class="st-gl bad">ไม่นับเป็นยอดขาย</span>${ST.filter(x => !x[2]).map(item).join('')}</div></div>`;
+}
+const statusTotal = rows => fmt(rows.reduce((a, r) => a + +r.orders, 0));
+
 // ===== สินค้าขายดี (ในหน้าภาพรวม): ตะกร้า / SKU / สินค้าจริง · รวมยอดจาก view รายวันของแต่ละแบบ =====
 let PROD_TAB = 'basket';
 const PROD_TABS = { basket: 'ตะกร้า', sku: 'SKU', item: 'สินค้าจริง' };
@@ -154,41 +182,72 @@ function prodData(B, S, I, N) {
     x.pcs += +r.pcs; x.single += +r.pcs_single; x.bundle += +r.pcs_bundle; x.ord += +r.orders; P.T.single += +r.pcs_single; P.T.bundle += +r.pcs_bundle; });
   return P;
 }
-function prodTable(P) {
+function prodTable(P, TAB = PROD_TAB) {
   const share = (v, t) => { const p = t ? v / t * 100 : 0; return `<span class="bar"><b style="width:${p.toFixed(1)}%"></b></span>${p > 0 && p < 1 ? '&lt;1' : Math.round(p)}%`; };
-  const ordH = `<th class="num">ออเดอร์ ${tip('1 ออเดอร์มีได้หลายรายการ ช่องนี้จึงไม่รวมในแถวรวม (จำนวนออเดอร์จริงดูที่แถบบน)')}</th>`;
+  const ordH = `<th class="num">ออเดอร์ ${tip('จำนวนออเดอร์ที่ซื้อรายการนี้<br>1 ออเดอร์ซื้อได้หลายรายการ แถวรวมจึงไม่รวมช่องนี้ (จำนวนออเดอร์จริงดูที่แถบบน)')}</th>`;
+  const setH = `<th class="num">ขายได้ (ชุด) ${tip('จำนวนที่ลูกค้ากดซื้อ นับตาม SKU<br>ชุดโปร 1 ชุด = 1 · ซื้อ 2 ชุดในออเดอร์เดียว = 2')}</th>`, pcsH = `<th class="num">ชิ้นจริง ${tip('ขายได้ (ชุด) × จำนวนชิ้นในชุด ตามรหัส SKU<br>เช่น ซื้อ 3 แถม 1 (MDAZ30Cx3+MDAZ15Cx1) 1 ชุด = 4 ชิ้น')}</th>`;
   const table = (head, body, foot) => `<table class="ui-table tbl prod" data-no-sort data-no-page data-limit="10"><thead><tr>${head}</tr></thead><tbody>${body}</tbody><tfoot><tr>${foot}</tr></tfoot></table>`;
-  if (PROD_TAB === 'basket') { const L = Object.entries(P.basket).sort((a, b) => b[1].rev - a[1].rev);
-    return table(`<th class="num">#</th><th class="l">ตะกร้า</th><th class="num">ยอดขาย</th><th class="l">สัดส่วน</th>${ordH}<th class="num">ชุดที่ขาย</th><th class="num">ชิ้นจริง</th>`,
+  if (TAB === 'basket') { const L = Object.entries(P.basket).sort((a, b) => b[1].rev - a[1].rev);
+    return table(`<th class="num">#</th><th class="l">ตะกร้า</th><th class="num">ยอดขาย</th><th class="l">สัดส่วน</th>${ordH}${setH}${pcsH}`,
       L.map(([n, x], i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l"><span class="pn ui-trunc">${esc(n)}</span><small>${fmt(x.skus.size)} SKU</small></td><td class="num">${fmt(x.rev)}</td><td class="l">${share(x.rev, P.T.rev)}</td><td class="num">${fmt(x.ord)}</td><td class="num">${fmt(x.sets)}</td><td class="num">${fmt(x.pcs)}</td></tr>`).join(''),
       `<td></td><td class="l">รวม ${fmt(L.length)} ตะกร้า</td><td class="num">${fmt(P.T.rev)}</td><td class="l">100%</td><td></td><td class="num">${fmt(P.T.sets)}</td><td class="num">${fmt(P.T.pcs)}</td>`); }
-  if (PROD_TAB === 'sku') { const L = Object.entries(P.sku).sort((a, b) => b[1].rev - a[1].rev);
-    return table(`<th class="num">#</th><th class="l">SKU</th><th class="num">ยอดขาย</th><th class="l">สัดส่วน</th>${ordH}<th class="num">ชุดที่ขาย</th><th class="num">ชิ้นจริง</th>`,
+  if (TAB === 'sku') { const L = Object.entries(P.sku).sort((a, b) => b[1].rev - a[1].rev);
+    return table(`<th class="num">#</th><th class="l">SKU</th><th class="num">ยอดขาย</th><th class="l">สัดส่วน</th>${ordH}${setH}${pcsH}`,
       L.map(([k, x], i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l"><span class="pn"><span class="ui-code">${esc(k)}</span>${x.bundle ? ' <span class="ui-badge gold">ชุด / โปร</span>' : ''}</span><small class="ui-trunc pn">${esc(x.name || '')}</small></td><td class="num">${fmt(x.rev)}</td><td class="l">${share(x.rev, P.T.rev)}</td><td class="num">${fmt(x.ord)}</td><td class="num">${fmt(x.sets)}</td><td class="num">${fmt(x.pcs)}</td></tr>`).join(''),
       `<td></td><td class="l">รวม ${fmt(L.length)} SKU</td><td class="num">${fmt(P.T.rev)}</td><td class="l">100%</td><td></td><td class="num">${fmt(P.T.sets)}</td><td class="num">${fmt(P.T.pcs)}</td>`); }
   const L = Object.entries(P.item).sort((a, b) => b[1].pcs - a[1].pcs);
-  return table(`<th class="num">#</th><th class="l">สินค้าจริง</th><th class="num">ชิ้นจริง</th><th class="l">สัดส่วน</th><th class="num">ขายเดี่ยว</th><th class="num">อยู่ในชุด / โปร</th>${ordH}`,
+  return table(`<th class="num">#</th><th class="l">สินค้าจริง</th>${pcsH}<th class="l">สัดส่วน</th><th class="num">ขายเดี่ยว ${tip('ชิ้นที่ขายผ่าน SKU ชิ้นเดียว (รหัส x1)')}</th><th class="num">อยู่ในชุด / โปร ${tip('ชิ้นที่ออกไปกับชุดโปร เช่น ซื้อ 3 แถม 1')}</th>${ordH}`,
     L.map(([k, x], i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l">${P.names[k] && P.names[k] !== k ? `<span class="pn ui-trunc">${esc(P.names[k])}</span><small class="ui-code">${esc(k)}</small>` : `<span class="pn ui-code">${esc(k)}</span><small>ยังไม่มีชื่อ</small>`}</td><td class="num"><b>${fmt(x.pcs)}</b></td><td class="l">${share(x.pcs, P.T.pcs)}</td><td class="num">${x.single ? fmt(x.single) : dash}</td><td class="num">${x.bundle ? fmt(x.bundle) : dash}</td><td class="num">${fmt(x.ord)}</td></tr>`).join(''),
     `<td></td><td class="l">รวม ${fmt(L.length)} รายการ</td><td class="num">${fmt(P.T.pcs)}</td><td class="l">100%</td><td class="num">${fmt(P.T.single)}</td><td class="num">${fmt(P.T.bundle)}</td><td></td>`);
 }
 
 // ===== Creator: ใครขายได้เท่าไร =====
 async function pageCreators(el) {
-  const rows = await DB.select('v_creator_daily', '*', inRange);
+  const [rows, CST] = await Promise.all([sel('v_creator_daily'), sel('v_creator_status_daily')]);
+  const stBy = {}; CST.forEach(r => { const x = stBy[r.creator] = stBy[r.creator] || {}; x[r.state] = (x[r.state] || 0) + +r.orders; });
+  const okN = c => (stBy[c] || {})['ส่งสำเร็จ'] || 0, backN = c => (stBy[c] || {})['ตีกลับ'] || 0, sentN = c => okN(c) + backN(c) + ((stBy[c] || {})['คืนสินค้า'] || 0);
+  const backCell = c => backN(c) ? `${fmt(backN(c))}<small>${(backN(c) / sentN(c) * 100).toFixed(1)}%</small>` : dash;
   const by = {}; rows.forEach(r => { const c = by[r.creator] = by[r.creator] || { rev: 0, ord: 0, items: 0, com: 0, types: new Set() }; c.rev += +r.revenue; c.ord += +r.orders; c.items += +r.items; c.com += +r.commission; if (r.content_type) c.types.add(r.content_type); });
   const list = Object.entries(by).sort((a, b) => b[1].rev - a[1].rev), T = list.reduce((a, [, c]) => ({ rev: a.rev + c.rev, ord: a.ord + c.ord, items: a.items + c.items, com: a.com + c.com }), { rev: 0, ord: 0, items: 0, com: 0 });
   if (!list.length) return el.innerHTML = '<div class="panel empty-note">ยังไม่มีออเดอร์ผ่าน Creator ในช่วงนี้</div>';
   const TYPE_ORDER = ['Live', 'คลิป', 'หน้าสินค้า'], types = c => [...c.types].sort((a, b) => (TYPE_ORDER.indexOf(a) + 1 || 9) - (TYPE_ORDER.indexOf(b) + 1 || 9)).join(' · ');
   const comInfo = 'ค่าคอมจากรายงานรับเงิน นับเฉพาะออเดอร์ที่ TikTok โอนเงินแล้ว<br>— = ยังไม่มีข้อมูล (ยังไม่ได้อัปรายงานรับเงิน หรือยังไม่ถึงรอบโอน)';
-  el.innerHTML = `<section class="ui-metrics hero">${metric('Creator ที่มียอด', fmt(list.length), 'คน', 'จำนวน Creator ที่มีออเดอร์ในช่วงนี้ (ไม่นับบัญชีร้านเอง)')}${metric('ยอดขายผ่าน Creator', fmt(T.rev), '', 'ยอดสินค้าหลังส่วนลด <b>ไม่รวม</b>ค่าส่ง และ<b>ไม่รวม</b>ออเดอร์ที่ยกเลิก')}${metric('ค่าคอม Creator', T.com ? fmt(T.com) : '—', T.com && T.rev ? (T.com / T.rev * 100).toFixed(1) + '% ของยอด' : '', comInfo)}${metric('ออเดอร์', fmt(T.ord), '', 'ออเดอร์ที่มี Creator <b>ไม่รวม</b>ออเดอร์ที่ยกเลิก')}</section>
-    <section class="panel"><div class="panel-h"><h2>Creator เรียงตามยอดขาย</h2></div><div class="wide"><table class="ui-table tbl" data-no-page data-limit="20"><thead><tr><th class="l">Creator</th><th class="l">ช่องทาง</th><th class="num">ยอดขาย</th><th class="num">สัดส่วน</th><th class="num">ออเดอร์</th><th class="num">ชิ้น</th><th class="num">ค่าคอม ${tip(comInfo)}</th></tr></thead><tbody>
-    ${list.map(([n, c]) => `<tr><td class="l">${esc(n)}</td><td class="l">${esc(types(c))}</td><td class="num">${fmt(c.rev)}</td><td class="num">${(c.rev / T.rev * 100).toFixed(1)}%</td><td class="num">${fmt(c.ord)}</td><td class="num">${fmt(c.items)}</td><td class="num">${c.com ? fmt(c.com) : dash}</td></tr>`).join('')}
-    </tbody><tfoot><tr><td class="l">รวม ${fmt(list.length)} คน</td><td></td><td class="num">${fmt(T.rev)}</td><td class="num">100%</td><td class="num">${fmt(T.ord)}</td><td class="num">${fmt(T.items)}</td><td class="num">${T.com ? fmt(T.com) : dash}</td></tr></tfoot></table></div></section>`;
+  el.innerHTML = `<section class="ui-metrics hero">${metric('Creator ที่มียอด', fmt(list.length), 'คน', 'จำนวน Creator ที่มีออเดอร์ในช่วงนี้ (ไม่นับบัญชีร้านเอง)')}${metric('ยอดขายผ่าน Creator', fmt(T.rev), '', 'ยอดสินค้าหลังส่วนลด <b>ไม่รวม</b>ค่าส่ง และ<b>ไม่รวม</b>ออเดอร์ที่ยกเลิก')}${metric('ค่าคอม Creator', T.com ? fmt(T.com) : '—', T.com && T.rev ? (T.com / T.rev * 100).toFixed(1) + '% ของยอด' : '', comInfo)}${metric('ออเดอร์', fmt(T.ord), '', 'ออเดอร์ที่มี Creator <b>ไม่รวม</b>ออเดอร์ที่ยกเลิก')}${(() => { const b = list.reduce((a, [n]) => a + backN(n), 0), sn = list.reduce((a, [n]) => a + sentN(n), 0); return metric('ตีกลับ', fmt(b), sn ? (b / sn * 100).toFixed(1) + '% ของที่ส่งออกไป' : '', 'ออเดอร์ของ Creator ที่ระบบยกเลิกเพราะส่งไม่สำเร็จ<br>% = ตีกลับ ÷ (ส่งสำเร็จ + คืนสินค้า + ตีกลับ)'); })()}</section>
+    <section class="panel"><div class="panel-h"><h2>Creator เรียงตามยอดขาย ${tip('กดที่แถวเพื่อดูสินค้า / โปรที่ Creator คนนั้นขาย และสถานะออเดอร์')}</h2></div><div class="wide"><table class="ui-table tbl cr-tbl" data-no-page data-limit="20"><thead><tr><th class="l">Creator</th><th class="l">ช่องทาง</th><th class="num">ยอดขาย</th><th class="num">สัดส่วน</th><th class="num">ออเดอร์</th><th class="num">ชิ้น</th><th class="num">ส่งสำเร็จ ${tip('ออเดอร์ที่ลูกค้าได้รับของแล้ว')}</th><th class="num">ตีกลับ ${tip('ออเดอร์ที่ส่งไม่สำเร็จ · % เทียบกับที่ส่งออกไป')}</th><th class="num">ค่าคอม ${tip(comInfo)}</th></tr></thead><tbody>
+    ${list.map(([n, c]) => `<tr data-c="${esc(n)}" tabindex="0"><td class="l"><span class="cr-name">${esc(n)}</span></td><td class="l">${esc(types(c))}</td><td class="num">${fmt(c.rev)}</td><td class="num">${(c.rev / T.rev * 100).toFixed(1)}%</td><td class="num">${fmt(c.ord)}</td><td class="num">${fmt(c.items)}</td><td class="num">${fmt(okN(n))}</td><td class="num">${backCell(n)}</td><td class="num">${c.com ? fmt(c.com) : dash}</td></tr>`).join('')}
+    </tbody><tfoot><tr><td class="l">รวม ${fmt(list.length)} คน</td><td></td><td class="num">${fmt(T.rev)}</td><td class="num">100%</td><td class="num">${fmt(T.ord)}</td><td class="num">${fmt(T.items)}</td><td class="num">${fmt(list.reduce((a, [n]) => a + okN(n), 0))}</td><td class="num">${fmt(list.reduce((a, [n]) => a + backN(n), 0))}</td><td class="num">${T.com ? fmt(T.com) : dash}</td></tr></tfoot></table></div></section>`;
+  el.querySelectorAll('.cr-tbl tbody tr').forEach(tr => { const go = () => openCreator(tr.dataset.c, by[tr.dataset.c], types(by[tr.dataset.c]), CST.filter(r => r.creator === tr.dataset.c)); tr.onclick = go; tr.onkeydown = e => { if (e.key === 'Enter') go(); }; });
+}
+
+// ===== กล่องรายละเอียด Creator: ตัวเลขสรุป + สถานะออเดอร์ + สินค้า / โปรที่ขาย (ตะกร้า / SKU) =====
+let DR_TAB = 'basket';
+function closeCreator() { document.querySelectorAll('.dr-bg, .drawer').forEach(e => e.remove()); document.removeEventListener('keydown', drKey); }
+function drKey(e) { if (e.key === 'Escape') closeCreator(); }
+async function openCreator(name, c, typesText, stRows) {
+  closeCreator();
+  const bg = document.createElement('div'), dr = document.createElement('aside'); bg.className = 'dr-bg'; dr.className = 'drawer'; dr.setAttribute('role', 'dialog'); dr.setAttribute('aria-label', 'รายละเอียด ' + name);
+  dr.innerHTML = `<div class="dr-h"><div><div class="dr-t">${esc(name)}</div><div class="ui-muted">${esc(typesText)} · ${rangeText(RANGE.from, RANGE.to)}</div></div><button type="button" class="dr-x" aria-label="ปิด">✕</button></div><div class="dr-body">${SKEL}</div>`;
+  document.body.append(bg, dr); requestAnimationFrame(() => { bg.classList.add('on'); dr.classList.add('on'); });
+  bg.onclick = closeCreator; dr.querySelector('.dr-x').onclick = closeCreator; document.addEventListener('keydown', drKey);
+  const k = 'cr|' + name + '|' + RANGE.from + '|' + RANGE.to;
+  if (!CACHE.has(k)) CACHE.set(k, { t: Date.now(), p: DB.select('v_creator_sku_daily', '*', q => inRange(q).eq('creator', name)) });
+  let R; try { R = await CACHE.get(k).p; } catch (e) { CACHE.delete(k); dr.querySelector('.dr-body').innerHTML = `<div class="panel empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`; return; }
+  if (!dr.isConnected) return;
+  const B = Object.values(R.reduce((m, r) => { const x = m[r.basket] = m[r.basket] || { basket: r.basket, revenue: 0, orders: 0, sets: 0, pcs: 0, skus: [] }; x.revenue += +r.revenue; x.orders += +r.orders; x.sets += +r.sets; x.pcs += +r.pcs; x.skus.push(r.sku); return m; }, {}));
+  const P = prodData(B, R, [], []), st = stRows.reduce((m, r) => (m[r.state] = (m[r.state] || 0) + +r.orders, m), {}), sent = (st['ส่งสำเร็จ'] || 0) + (st['คืนสินค้า'] || 0) + (st['ตีกลับ'] || 0);
+  const body = dr.querySelector('.dr-body');
+  body.innerHTML = `<section class="ui-metrics hero">${metric('ยอดขาย', fmt(c.rev), '', 'ยอดสินค้าหลังส่วนลด <b>ไม่รวม</b>ค่าส่ง และ<b>ไม่รวม</b>ออเดอร์ที่ยกเลิก')}${metric('ออเดอร์', fmt(c.ord), fmt(c.items) + ' ชิ้น', '<b>ไม่รวม</b>ออเดอร์ที่ยกเลิก')}
+      ${metric('ตีกลับ', fmt(st['ตีกลับ'] || 0), sent ? ((st['ตีกลับ'] || 0) / sent * 100).toFixed(1) + '% ของที่ส่งออกไป' : '', 'ตีกลับ ÷ (ส่งสำเร็จ + คืนสินค้า + ตีกลับ)')}${metric('ค่าคอม', c.com ? fmt(c.com) : '—', c.com && c.rev ? (c.com / c.rev * 100).toFixed(1) + '% ของยอด' : '', 'ค่าคอมจากรายงานรับเงิน นับเฉพาะออเดอร์ที่ TikTok โอนเงินแล้ว')}</section>
+    <section class="panel"><div class="panel-h"><h2>สถานะออเดอร์</h2><span class="ui-muted">ทั้งหมด ${statusTotal(stRows)} ออเดอร์</span></div>${statusStrip(stRows, true)}</section>
+    <section class="panel" id="drProd"><div class="panel-h"><h2>สินค้า / โปรที่ขาย</h2><span style="flex:1"></span><div class="ui-presets" id="drTabs"><button type="button" data-t="basket">ตะกร้า</button><button type="button" data-t="sku">SKU</button></div></div><div class="wide" id="drBody"></div></section>`;
+  const draw = () => { const pnl = body.querySelector('#drProd'); pnl.querySelectorAll('.btn.more').forEach(b => b.remove()); body.querySelector('#drBody').innerHTML = R.length ? prodTable(P, DR_TAB) : '<div class="empty-note">ไม่มีสินค้าในช่วงนี้</div>'; limitRows(pnl);
+    pnl.querySelectorAll('#drTabs button').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === DR_TAB)); if (window.UI && UI.fit) UI.fit(); };
+  body.querySelectorAll('#drTabs button').forEach(b => b.onclick = () => { DR_TAB = b.dataset.t; draw(); }); draw();
 }
 
 // ===== สินค้าที่ส่งออก: รายวัน (ตารางแถว = สินค้า · คอลัมน์ = วัน) + รวมทั้งช่วง =====
 async function pageProducts(el) {
-  const rows = await DB.select('v_shipped_daily', '*', inRange), ds = days(RANGE.from, RANGE.to);
+  const rows = await sel('v_shipped_daily'), ds = days(RANGE.from, RANGE.to);
   if (!rows.length) return el.innerHTML = '<div class="panel empty-note">ยังไม่มีสินค้าที่ส่งในช่วงนี้</div>';
   const by = {}; rows.forEach(r => { const p = by[r.sku] = by[r.sku] || { name: r.product_name, q: {}, t: 0 }; p.q[r.d] = (p.q[r.d] || 0) + +r.qty; p.t += +r.qty; });
   const list = Object.entries(by).sort((a, b) => b[1].t - a[1].t), dayTot = d => list.reduce((a, [, p]) => a + (p.q[d] || 0), 0), tot = list.reduce((a, [, p]) => a + p.t, 0);
@@ -200,7 +259,7 @@ async function pageProducts(el) {
 
 // ===== สต็อกแบบเบา: คงเหลือ · ขายได้อีกกี่วัน · บันทึกรับเข้า / เพิ่มสินค้า =====
 async function pageStock(el) {
-  const rows = await DB.select('v_stock');
+  const rows = await sel('v_stock', false);
   el.innerHTML = `<section class="panel"><div class="panel-h"><h2>สต็อกคงเหลือ ${tip('คงเหลือ = ยอดตั้งต้น + รับเข้า − ส่งออก (นับตั้งแต่วันตั้งต้น)<br>ขายได้อีก = คงเหลือ ÷ ส่งออกเฉลี่ย 30 วัน · สีแดง = น้อยกว่าจำนวนวันขั้นต่ำของสินค้านั้น<br>คงเหลือติดลบ (สีแดง) = ส่งออกมากกว่าที่บันทึกไว้ ให้เช็คสต็อกตั้งต้น / รับเข้า')}</h2></div>
     <div class="wide"><table class="ui-table tbl" data-no-page><thead><tr><th class="l">สินค้า</th><th class="num">ตั้งต้น</th><th class="num">รับเข้า</th><th class="num">ส่งออก</th><th class="num">คงเหลือ</th><th class="num">ส่งเฉลี่ย / วัน</th><th class="num">ขายได้อีก</th></tr></thead><tbody>
     ${rows.map(r => `<tr><td class="l">${esc(r.name || r.sku)}<small>${esc(r.sku)}</small></td><td class="num">${fmt(r.opening_stock)}</td><td class="num">${fmt(r.stock_in)}</td><td class="num">${fmt(r.shipped)}</td><td class="num"><b${+r.on_hand < 0 ? ' style="color:var(--bad)"' : ''}>${fmt(r.on_hand)}</b></td><td class="num">${fmt1(r.avg_day)}</td>
@@ -208,13 +267,13 @@ async function pageStock(el) {
     </tbody></table></div></section>
     <div class="grid2"><section class="panel"><div class="panel-h"><h2>บันทึกรับสินค้าเข้า</h2></div><div class="form-row"><input id="siSku" placeholder="SKU" style="width:140px"><input id="siQty" type="number" placeholder="จำนวน" style="width:100px"><input id="siDate" type="date" value="${ymd(new Date())}"><input id="siNote" placeholder="หมายเหตุ" style="flex:1"><button class="btn pri" id="siSave">บันทึก</button></div></section>
     <section class="panel"><div class="panel-h"><h2>เพิ่ม / แก้สินค้า</h2></div><div class="form-row"><input id="pSku" placeholder="SKU" style="width:120px"><input id="pName" placeholder="ชื่อสินค้า" style="flex:1"><input id="pOpen" type="number" placeholder="สต็อกตั้งต้น" style="width:110px"><input id="pDate" type="date" value="${ymd(new Date())}"><button class="btn pri" id="pSave">บันทึก</button></div></section></div>`;
-  document.getElementById('siSave').onclick = async () => { await DB.insert('stock_in', { sku: siSku.value.trim(), qty: +siQty.value, moved_on: siDate.value, note: siNote.value || null }); route(); };
-  document.getElementById('pSave').onclick = async () => { await DB.upsert('products', [{ sku: pSku.value.trim(), name: pName.value.trim(), opening_stock: +pOpen.value || 0, opening_date: pDate.value }], 'sku'); route(); };
+  document.getElementById('siSave').onclick = async () => { await DB.insert('stock_in', { sku: siSku.value.trim(), qty: +siQty.value, moved_on: siDate.value, note: siNote.value || null }); clearCache(); route(); };
+  document.getElementById('pSave').onclick = async () => { await DB.upsert('products', [{ sku: pSku.value.trim(), name: pName.value.trim(), opening_stock: +pOpen.value || 0, opening_date: pDate.value }], 'sku'); clearCache(); route(); };
 }
 
 // ===== เงินเข้า =====
 async function pageMoney(el) {
-  const rows = (await DB.select('v_settlement_daily', '*', inRange)).sort((a, b) => a.d < b.d ? 1 : -1);
+  const rows = [...await sel('v_settlement_daily')].sort((a, b) => a.d < b.d ? 1 : -1);
   const S = k => rows.reduce((a, r) => a + (+r[k] || 0), 0);
   el.innerHTML = `<section class="ui-metrics hero">${metric('เงินเข้า', fmt(S('amount')), `${fmt(S('orders'))} ออเดอร์`, 'ยอดที่ TikTok โอนจริงตามไฟล์ Income / Settlement นับตามวันที่โอน')}${metric('ค่าธรรมเนียม', fmt(S('fees')), '', 'ค่าธรรมเนียมที่ TikTok หักตามไฟล์ (ติดลบ = หักออก)')}${metric('ค่าคอม Creator', fmt(S('affiliate_commission')), '', 'ค่าคอม Creator ที่ TikTok หักตามรายงานรับเงิน (ติดลบ = หักออก)')}</section>
     <section class="panel"><div class="panel-h"><h2>เงินเข้ารายวัน</h2></div><div class="wide"><table class="ui-table tbl" data-no-page><thead><tr><th class="l">วันที่โอน</th><th class="num">ออเดอร์</th><th class="num">ยอดขาย</th><th class="num">ค่าธรรมเนียม</th><th class="num">ค่าคอม Creator</th><th class="num">เงินเข้า</th></tr></thead><tbody>
@@ -224,11 +283,12 @@ async function pageMoney(el) {
 
 // ===== ตัวสลับหน้า (#ชื่อหน้า) =====
 async function route() {
+  closeCreator();
   const id = (location.hash || '#overview').slice(1), pg = PAGES.find(p => p[0] === id) || PAGES[0];
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.p === pg[0]));
   document.getElementById('pageTitle').textContent = pg[1];
   document.getElementById('range').style.visibility = ['stock', 'upload'].includes(pg[0]) ? 'hidden' : 'visible';
-  const el = document.getElementById('content'); el.innerHTML = '<div class="panel empty-note">กำลังโหลด…</div>';
+  const el = document.getElementById('content'); el.innerHTML = pg[0] === 'upload' ? '' : SKEL;
   try { await ({ overview: pageOverview, creators: pageCreators, products: pageProducts, stock: pageStock, money: pageMoney, upload: pageUpload })[pg[0]](el); limitRows(el); if (window.UI && UI.fit) UI.fit(); }
   catch (e) { el.innerHTML = `<div class="panel empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`; }
 }
