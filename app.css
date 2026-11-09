@@ -132,3 +132,27 @@ body { margin:0; display:flex; min-height:100vh; }
 .gate-card { text-align:center; } .gate-logo { margin:0 auto 12px; } .gate-card .gate-sys { margin-bottom:20px; }
 .gate-card label { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 .gate-card input { text-align:center; }
+/* (2026-11-07) แตกออเดอร์ */
+.it-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; } .it-dl { display:inline-flex; align-items:center; gap:6px; }
+.it-og { display:flex; justify-content:space-between; gap:12px; font-weight:600; } .it-og b { font-variant-numeric:tabular-nums; }
+.it-tbl td[rowspan] { vertical-align:top; } .it-tbl .pn { display:block; max-width:300px; }
+.ui-badge.warn { color:var(--warn); background:var(--warn-bg); } .ui-badge.good { color:var(--good); background:var(--up-bg); }
+/* (2026-11-08) รายละเอียดออเดอร์: ป้ายตรวจ / ปุ่มดาวน์โหลดบนแถบบน · ตารางแยกคอลัมน์ · จุดส้ม = หารเฉลี่ย */
+.page-acts { display:flex; align-items:center; gap:8px; } .page-acts:empty { display:none; }
+.page-acts .it-dl { height:36px; border-radius:10px; } .it-chk { height:28px; padding:0 12px; cursor:help; }
+.has-tip { cursor:help; border-bottom:1px dotted var(--text3); }
+.m-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--warn); margin-left:6px; vertical-align:2px; }
+
+.it-tbl tr.o-alt > td { background:color-mix(in srgb, var(--bg3) 85%, transparent); }   /* สลับสีทีละออเดอร์ (ออเดอร์ที่มีหลายรายการ แถบสีคลุมทุกแถวของออเดอร์นั้น) */ .it-tbl .pn { max-width:240px; }
+.it-tbl td { padding-top:9px; padding-bottom:9px; }
+.it-tbl th, .it-tbl td { padding-left:9px; padding-right:9px; } .it-tbl .pn { max-width:210px; } .it-tbl .ui-code { font-size:12.5px; }
+/* (2026-11-08) ตารางรายการออเดอร์ตามแบบ C: ไม่มีเส้นแนวตั้ง · ไม่มีเส้นระหว่างรายการในออเดอร์เดียวกัน · เหลือเส้นคั่นระหว่างออเดอร์ + แถบสีสลับ */
+.it-tbl td, .it-tbl td[rowspan] { border-right:0; border-bottom:0; } .it-tbl tr.o-start > td { border-top:1px solid var(--row-border); }
+.it-tbl tbody tr:last-child > td { border-bottom:1px solid var(--row-border); }
+/* (2026-11-08) หน้าสต็อก: กรอกในตาราง */
+.st-tbl td { vertical-align:middle; } .st-tbl .ui-code { display:block; font-size:12.5px; margin-bottom:4px; }
+.st-in { font:inherit; font-size:13px; height:32px; padding:0 9px; border:1px solid var(--border); border-radius:8px; background:var(--bg2); color:var(--text); }
+.st-in:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.st-name { width:260px; } .st-n { width:100px; text-align:right; font-variant-numeric:tabular-nums; }
+.st-tbl tr.is-dirty > td { background:var(--accent-soft); }
+.st-tbl input[type=date] + .ui-datebtn { height:32px; }
