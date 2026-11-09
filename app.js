@@ -1,6 +1,6 @@
 // app.js — หน้าวิเคราะห์ (อ่านจาก view ในฐานข้อมูล · หน้าเว็บแค่แสดง) · หน้า: ภาพรวม · Creator · สินค้าที่ส่ง · สต็อก · เงินเข้า · อัปโหลด
 // กฎที่ยกมาจากระบบต้นแบบ: ยอดเงินเต็มจำนวน ไม่มี ฿ · ⓘ ทุกตัวเลขบอกรวม / ไม่รวม · แถวรวมล่างสุด = ตัวเลขในแถบบน · สีเขียว / แดงใช้เมื่อหมายถึงดี / ไม่ดีเท่านั้น
-const PAGES = [['overview', 'ภาพรวม'], ['creators', 'Creator'], ['products', 'สินค้าที่ส่ง'], ['stock', 'สต็อก'], ['money', 'เงินเข้า'], ['upload', 'อัปโหลด']];
+const PAGES = [['overview', 'ภาพรวม'], ['creators', 'Creator'], ['products', 'สินค้าที่ส่ง'], ['items', 'รายละเอียดออเดอร์'], ['stock', 'สต็อก'], ['money', 'เงินเข้า'], ['upload', 'อัปโหลด']];
 const fmt = v => Math.round(+v || 0).toLocaleString('en-US');
 const fmt1 = v => (+v || 0).toLocaleString('en-US', { maximumFractionDigits: 1 });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -257,18 +257,118 @@ async function pageProducts(el) {
     </tbody><tfoot><tr><td class="l stick">รวม</td><td class="num">${fmt(tot)}</td>${ds.map(d => `<td class="num">${fmt(dayTot(d))}</td>`).join('')}</tr></tfoot></table></div></section>`;
 }
 
-// ===== สต็อกแบบเบา: คงเหลือ · ขายได้อีกกี่วัน · บันทึกรับเข้า / เพิ่มสินค้า =====
+// ===== รายละเอียดออเดอร์ (แตกออเดอร์): แต่ละบรรทัดของออเดอร์ → สินค้าจริง + ยอดต่อชิ้น (แบ่งตาม RSP / หารเฉลี่ย) · รวมกลับ = ยอดเดิมทุกสตางค์ · ดาวน์โหลด Excel =====
+const fmt2 = v => (+v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const METHOD = { 'ไม่ต้องแบ่ง': '', 'ตาม RSP': 'good', 'หารเฉลี่ย': 'warn' };
+const SALE_STATES = ['ส่งสำเร็จ', 'กำลังส่ง', 'คืนสินค้า'];
+let IT = { page: 0, q: '' };
+const IT_PER = 20;
+async function pageItems(el) {
+  const [S, T, N, PR] = await Promise.all([sel('v_item_sales_daily'), sel('v_sales_daily'), sel('v_item_names', false), sel('products', false)]);
+  if (!T.length) return el.innerHTML = '<div class="panel empty-note">ยังไม่มียอดขายในช่วงนี้</div>';
+  const names = Object.fromEntries(N.map(r => [r.item, r.name])), rsp = Object.fromEntries(PR.filter(r => +r.rsp > 0).map(r => [r.sku, +r.rsp]));
+  const by = {}; S.forEach(r => { const x = by[r.item] = by[r.item] || { pcs: 0, amt: 0, avg: 0, byRsp: 0 }; x.pcs += +r.pcs; x.amt += +r.amount; x.avg += +r.pcs_avg; x.byRsp += +r.pcs_rsp; });
+  const L = Object.entries(by).sort((a, b) => b[1].amt - a[1].amt), A = L.reduce((a, [, x]) => ({ pcs: a.pcs + x.pcs, amt: a.amt + x.amt, avg: a.avg + x.avg, byRsp: a.byRsp + x.byRsp }), { pcs: 0, amt: 0, avg: 0, byRsp: 0 });
+  const rev = T.reduce((a, r) => a + +r.revenue, 0), ord = T.reduce((a, r) => a + +r.orders, 0), same = Math.abs(rev - A.amt) < 0.005;
+  const wayTip = x => [x.pcs - x.avg - x.byRsp ? `ขายเดี่ยว ไม่ต้องแบ่ง ${fmt(x.pcs - x.avg - x.byRsp)} ชิ้น` : '', x.byRsp ? `อยู่ในชุดโปร แบ่งตาม RSP ${fmt(x.byRsp)} ชิ้น` : '', x.avg ? `อยู่ในชุดโปร หารเฉลี่ย ${fmt(x.avg)} ชิ้น (ยังไม่มี RSP ครบในชุด)` : ''].filter(Boolean).join('\n');
+  pageActs().innerHTML = `${same ? '' : `<span class="ui-badge bad it-chk" data-tip="${esc(`แยกเป็นรายชิ้นแล้วรวมกลับ ${fmt2(A.amt)}\nยอดขาย ${fmt2(rev)}\nไม่ตรงกัน กรุณาแจ้งผู้ดูแลระบบ`)}">! รวมกลับไม่ตรงกับยอดขาย</span>`}
+    <button type="button" class="btn pri it-dl" id="itDl"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>ดาวน์โหลด Excel</button>`;
+  el.innerHTML = `<section class="ui-metrics hero">${metric('ออเดอร์', fmt(ord), '', '<b>ไม่รวม</b>ออเดอร์ที่ยกเลิก')}${metric('ชิ้นจริง', fmt(A.pcs), fmt(L.length) + ' รายการสินค้า', 'แตกชุดโปรเป็นชิ้นตามรหัส SKU')}
+      ${metric('ยอดขาย', fmt2(rev), 'ทศนิยม 2 ตำแหน่ง', 'SKU Subtotal After Discount (ยอดหลังส่วนลด ไม่รวมค่าส่ง) ตัวเดียวกับหน้าภาพรวม')}
+      ${metric('ชิ้นที่ยังหารเฉลี่ย', fmt(A.avg), A.byRsp ? `ตาม RSP แล้ว ${fmt(A.byRsp)} ชิ้น` : 'ยังไม่มีราคา RSP', 'ชิ้นที่อยู่ในชุดโปรและยังไม่มี RSP ครบทุกตัวในชุด จึงแบ่งยอดแบบหารเฉลี่ยเท่ากันทุกชิ้น<br>กรอก RSP ที่หน้าสต็อกแล้ว ระบบแบ่งตามสัดส่วน RSP ให้เอง')}</section>
+    <section class="panel"><div class="panel-h"><h2>สรุปรายสินค้าจริง ${tip('ยอดหลังแบ่ง = ยอดของบรรทัดที่แบ่งให้สินค้าแต่ละตัวแล้ว รวมกันเท่ายอดขาย<br>ราคาเฉลี่ยต่อชิ้น = ยอดหลังแบ่ง ÷ ชิ้น')}</h2></div><div class="wide">
+      <table class="ui-table tbl prod" data-no-sort data-no-page data-limit="10"><thead><tr><th class="num">#</th><th class="l">สินค้าจริง</th><th class="num">ชิ้น</th><th class="num">ยอดหลังแบ่ง</th><th class="num">ราคาเฉลี่ย / ชิ้น</th><th class="num">RSP ${tip('ราคา RSP ต่อชิ้น ใช้แบ่งยอดชุดโปร (กรอกที่หน้าสต็อก)<br>ชี้ที่ช่องเพื่อดูว่าแบ่งยอดแบบไหนกี่ชิ้น')}</th></tr></thead><tbody>
+      ${L.map(([k, x], i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l">${names[k] && names[k] !== k ? `<span class="pn ui-trunc">${esc(names[k])}</span><small class="ui-code">${esc(k)}</small>` : `<span class="pn ui-code">${esc(k)}</span><small>ยังไม่มีชื่อ</small>`}</td><td class="num">${fmt(x.pcs)}</td><td class="num">${fmt2(x.amt)}</td><td class="num">${fmt2(x.pcs ? x.amt / x.pcs : 0)}</td><td class="num"><span class="has-tip" data-tip="${esc(wayTip(x))}">${rsp[k] ? fmt2(rsp[k]) : '—'}</span>${x.avg ? '<i class="m-dot" aria-hidden="true"></i>' : ''}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(L.length)} รายการ</td><td class="num">${fmt(A.pcs)}</td><td class="num">${fmt2(A.amt)}</td><td></td><td></td></tr></tfoot></table></div></section>
+    <section class="panel" id="itOrders"><div class="panel-h"><h2>รายการออเดอร์ ${tip('แต่ละออเดอร์แตกเป็นสินค้าจริง<br>ยอดของแต่ละบรรทัด (SKU) แบ่งให้สินค้าในชุด เศษสตางค์ไปรวมที่สินค้าตัวสุดท้าย รวมกลับเท่ายอดบรรทัดเสมอ')}</h2>
+      <span style="flex:1"></span><div class="form-row"><input type="search" id="itQ" placeholder="ค้นหาหมายเลขคำสั่งซื้อ" value="${esc(IT.q)}" style="width:230px"><button type="button" class="btn" id="itGo">ค้นหา</button></div></div><div id="itBody"><div class="ui-skel sk-box"></div></div></section>`;
+  const go = () => { IT.q = document.getElementById('itQ').value.trim(); IT.page = 0; drawOrders(names); };
+  document.getElementById('itGo').onclick = go; document.getElementById('itQ').onkeydown = e => { if (e.key === 'Enter') go(); };
+  document.getElementById('itDl').onclick = e => exportItems(e.currentTarget, names, rsp, L, A, rev);
+  drawOrders(names);
+}
+async function drawOrders(names) {
+  const box = document.getElementById('itBody'); if (!box) return;
+  let q = DB.client.from('v_orders').select('order_id, d, state, creator, revenue', { count: 'exact' }).gte('d', RANGE.from).lte('d', RANGE.to).in('state', SALE_STATES);
+  if (IT.q) q = q.ilike('order_id', `%${IT.q}%`);
+  const { data: O, count, error } = await q.order('d', { ascending: false }).order('order_id').range(IT.page * IT_PER, IT.page * IT_PER + IT_PER - 1);
+  if (error) return box.innerHTML = `<div class="empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(error.message)}</div>`;
+  if (!O.length) return box.innerHTML = `<div class="empty-note">${IT.q ? 'ไม่พบหมายเลขคำสั่งซื้อนี้ในช่วงวันที่ที่เลือก' : 'ไม่มีออเดอร์ในช่วงนี้'}</div>`;
+  const R = await DB.select('v_order_items', '*', x => x.in('order_id', O.map(o => o.order_id)).order('sku_id').order('line_no').order('k'));
+  const pages = Math.ceil(count / IT_PER);
+  const ST_CLS = { 'ส่งสำเร็จ': 'good', 'คืนสินค้า': 'warn' }, MTIP = { 'ไม่ต้องแบ่ง': 'SKU ชิ้นเดียว ไม่ต้องแบ่งยอด', 'ตาม RSP': 'ชุดโปร: แบ่งยอดตามสัดส่วน RSP', 'หารเฉลี่ย': 'ชุดโปร: หารเฉลี่ยเท่ากันทุกชิ้น (ยังไม่มี RSP ครบในชุด)' };
+  box.innerHTML = `<div class="wide"><table class="ui-table tbl it-tbl" data-no-sort data-no-page><thead><tr><th class="l">คำสั่งซื้อ</th><th class="l">วันที่สั่ง</th><th class="l">สถานะ</th><th class="l">Creator</th><th class="l">SKU</th><th class="num">ชุด</th><th class="num">ยอด SKU</th><th class="l">สินค้าจริง</th><th class="num">ชิ้น</th><th class="num">ราคาต่อชิ้น</th><th class="num">ยอดหลังแบ่ง ${tip('ยอดของ SKU ที่แบ่งให้สินค้าแต่ละตัว รวมกันเท่ายอด SKU<br>ชี้ที่ตัวเลขเพื่อดูวิธีแบ่ง · จุดสีส้ม = หารเฉลี่ยเพราะยังไม่มี RSP')}</th></tr></thead><tbody>
+    ${O.map((o, oi) => { const items = R.filter(r => r.order_id === o.order_id), lines = [...new Set(items.map(r => r.sku_id + '|' + r.line_no))], n = items.length, cls = oi % 2 ? ' o-alt' : '';
+      const head = `<td class="l" rowspan="${n}"><span class="ui-code">${esc(o.order_id)}</span></td><td class="l" rowspan="${n}">${dTh(o.d)}</td><td class="l" rowspan="${n}"><span class="ui-badge ${ST_CLS[o.state] || ''}">${esc(o.state)}</span></td><td class="l" rowspan="${n}">${o.creator ? esc(o.creator) : dash}</td>`;
+      let first = true;
+      return lines.map(key => { const g = items.filter(r => r.sku_id + '|' + r.line_no === key);
+        return g.map((r, j) => { const tr = `<tr class="${first ? 'o-start' : ''}${cls}">${first ? head : ''}${j ? '' : `<td class="l" rowspan="${g.length}"><span class="ui-code">${esc(r.sku)}</span></td><td class="num" rowspan="${g.length}">${fmt(r.sets)}</td><td class="num" rowspan="${g.length}">${fmt2(r.line_amount)}</td>`}<td class="l"><span class="pn ui-trunc">${esc(names[r.item] || r.item)}</span><small class="ui-code">${esc(r.item)}</small></td><td class="num">${fmt(r.pcs)}</td><td class="num">${fmt2(r.amount / r.pcs)}</td><td class="num"><b class="has-tip" data-tip="${esc(MTIP[r.method] || r.method)}">${fmt2(r.amount)}</b>${r.method === 'หารเฉลี่ย' ? '<i class="m-dot" aria-hidden="true"></i>' : ''}</td></tr>`; first = false; return tr; }).join(''); }).join(''); }).join('')}
+    </tbody></table></div>
+    <div class="ui-pager"><span>ออเดอร์ ${fmt(IT.page * IT_PER + 1)}–${fmt(Math.min(count, IT.page * IT_PER + IT_PER))} จาก ${fmt(count)}</span><div class="ui-pager-btns"><button type="button" data-p="-1"${IT.page ? '' : ' disabled'}>‹ ก่อนหน้า</button><button type="button" aria-current="page">${fmt(IT.page + 1)} / ${fmt(pages)}</button><button type="button" data-p="1"${IT.page + 1 < pages ? '' : ' disabled'}>ถัดไป ›</button></div></div>`;
+  box.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { IT.page += +b.dataset.p; drawOrders(names); document.getElementById('itOrders').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+}
+// ดาวน์โหลด Excel: ชีตรายละเอียด (1 แถว = สินค้าจริง 1 ตัวในบรรทัด) + ชีตสรุปรายสินค้า + แถวตรวจรวมกลับ
+async function exportItems(btn, names, rsp, L, A, rev) {
+  const label = btn.innerHTML; btn.disabled = true; btn.textContent = 'กำลังเตรียมไฟล์…';
+  try {
+    const R = await DB.select('v_order_items', '*', q => inRange(q).order('d').order('order_id').order('sku_id').order('line_no').order('k'));
+    const r2 = v => Math.round(v * 100) / 100;
+    const detail = R.map(r => ({ 'วันที่สั่ง': r.d, 'หมายเลขคำสั่งซื้อ': r.order_id, 'สถานะ': r.state, 'Creator': r.creator || '', 'SKU': r.sku, 'จำนวนชุด': +r.sets,
+      'ยอด SKU (หลังส่วนลด)': +r.k === 1 ? +r.line_amount : null, 'รหัสสินค้าจริง': r.item, 'ชื่อสินค้า': names[r.item] || r.item, 'จำนวนชิ้น': +r.pcs,
+      'ราคาต่อชิ้น': r2(r.amount / r.pcs), 'ยอดหลังแบ่ง': +r.amount, 'วิธีแบ่ง': r.method }));
+    const sum = detail.reduce((a, r) => a + r['ยอดหลังแบ่ง'], 0);
+    detail.push({}, { 'หมายเลขคำสั่งซื้อ': 'รวม', 'ยอด SKU (หลังส่วนลด)': r2(detail.reduce((a, r) => a + (r['ยอด SKU (หลังส่วนลด)'] || 0), 0)), 'จำนวนชิ้น': detail.reduce((a, r) => a + (r['จำนวนชิ้น'] || 0), 0), 'ยอดหลังแบ่ง': r2(sum) });
+    const summary = L.map(([k, x]) => ({ 'รหัสสินค้าจริง': k, 'ชื่อสินค้า': names[k] || k, 'ชิ้น': x.pcs, 'ยอดหลังแบ่ง': r2(x.amt), 'ราคาเฉลี่ยต่อชิ้น': r2(x.pcs ? x.amt / x.pcs : 0), 'RSP': rsp[k] || null, 'ชิ้นที่แบ่งตาม RSP': x.byRsp, 'ชิ้นที่หารเฉลี่ย': x.avg }));
+    summary.push({}, { 'ชื่อสินค้า': 'รวมรายชิ้น', 'ชิ้น': A.pcs, 'ยอดหลังแบ่ง': r2(A.amt) }, { 'ชื่อสินค้า': 'ยอดขาย (ตรวจสอบ)', 'ยอดหลังแบ่ง': r2(rev) });
+    const wb = XLSX.utils.book_new(), money = ['ยอด SKU (หลังส่วนลด)', 'ราคาต่อชิ้น', 'ยอดหลังแบ่ง', 'ราคาเฉลี่ยต่อชิ้น', 'RSP'];
+    [['รายละเอียด', detail], ['สรุปรายสินค้า', summary]].forEach(([n, rows]) => {
+      const ws = XLSX.utils.json_to_sheet(rows), head = Object.keys(rows[0]), rng = XLSX.utils.decode_range(ws['!ref']);
+      head.forEach((h, c) => { if (!money.includes(h)) return; for (let r = 1; r <= rng.e.r; r++) { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell && cell.t === 'n') cell.z = '#,##0.00'; } });
+      ws['!cols'] = head.map(h => ({ wch: Math.max(10, h.length + 4, h === 'ชื่อสินค้า' ? 40 : 0, h === 'หมายเลขคำสั่งซื้อ' ? 22 : 0) }));
+      XLSX.utils.book_append_sheet(wb, ws, n);
+    });
+    XLSX.writeFile(wb, `รายละเอียดออเดอร์_${RANGE.from}_${RANGE.to}.xlsx`);
+  } catch (e) { uiAlert ? uiAlert('ดาวน์โหลดไม่สำเร็จ', { text: e.message, tone: 'bad' }) : alert(e.message); }
+  btn.disabled = false; btn.innerHTML = label;
+}
+
+// ===== สต็อก + ราคา RSP: รายการสินค้าจริงทุกตัวที่เคยขาย (ดึงให้เอง) · กรอกชื่อ / RSP / สต็อกตั้งต้นในตาราง · บันทึกรับเข้า =====
 async function pageStock(el) {
-  const rows = await sel('v_stock', false);
-  el.innerHTML = `<section class="panel"><div class="panel-h"><h2>สต็อกคงเหลือ ${tip('คงเหลือ = ยอดตั้งต้น + รับเข้า − ส่งออก (นับตั้งแต่วันตั้งต้น)<br>ขายได้อีก = คงเหลือ ÷ ส่งออกเฉลี่ย 30 วัน · สีแดง = น้อยกว่าจำนวนวันขั้นต่ำของสินค้านั้น<br>คงเหลือติดลบ (สีแดง) = ส่งออกมากกว่าที่บันทึกไว้ ให้เช็คสต็อกตั้งต้น / รับเข้า')}</h2></div>
-    <div class="wide"><table class="ui-table tbl" data-no-page><thead><tr><th class="l">สินค้า</th><th class="num">ตั้งต้น</th><th class="num">รับเข้า</th><th class="num">ส่งออก</th><th class="num">คงเหลือ</th><th class="num">ส่งเฉลี่ย / วัน</th><th class="num">ขายได้อีก</th></tr></thead><tbody>
-    ${rows.map(r => `<tr><td class="l">${esc(r.name || r.sku)}<small>${esc(r.sku)}</small></td><td class="num">${fmt(r.opening_stock)}</td><td class="num">${fmt(r.stock_in)}</td><td class="num">${fmt(r.shipped)}</td><td class="num"><b${+r.on_hand < 0 ? ' style="color:var(--bad)"' : ''}>${fmt(r.on_hand)}</b></td><td class="num">${fmt1(r.avg_day)}</td>
-      <td class="num">${r.days_left == null ? '<span class="ui-muted">—</span>' : `<span class="ui-chip ${+r.days_left < +r.min_days ? 'dn' : 'up'}">${fmt(r.days_left)} วัน</span>`}</td></tr>`).join('') || '<tr><td colspan="7" class="l ui-muted">ยังไม่มีสินค้า — เพิ่มด้านล่าง</td></tr>'}
-    </tbody></table></div></section>
-    <div class="grid2"><section class="panel"><div class="panel-h"><h2>บันทึกรับสินค้าเข้า</h2></div><div class="form-row"><input id="siSku" placeholder="SKU" style="width:140px"><input id="siQty" type="number" placeholder="จำนวน" style="width:100px"><input id="siDate" type="date" value="${ymd(new Date())}"><input id="siNote" placeholder="หมายเหตุ" style="flex:1"><button class="btn pri" id="siSave">บันทึก</button></div></section>
-    <section class="panel"><div class="panel-h"><h2>เพิ่ม / แก้สินค้า</h2></div><div class="form-row"><input id="pSku" placeholder="SKU" style="width:120px"><input id="pName" placeholder="ชื่อสินค้า" style="flex:1"><input id="pOpen" type="number" placeholder="สต็อกตั้งต้น" style="width:110px"><input id="pDate" type="date" value="${ymd(new Date())}"><button class="btn pri" id="pSave">บันทึก</button></div></section></div>`;
-  document.getElementById('siSave').onclick = async () => { await DB.insert('stock_in', { sku: siSku.value.trim(), qty: +siQty.value, moved_on: siDate.value, note: siNote.value || null }); clearCache(); route(); };
-  document.getElementById('pSave').onclick = async () => { await DB.upsert('products', [{ sku: pSku.value.trim(), name: pName.value.trim(), opening_stock: +pOpen.value || 0, opening_date: pDate.value }], 'sku'); clearCache(); route(); };
+  const rows = await sel('v_stock', false), today = ymd(new Date());
+  const noRsp = rows.filter(r => !(+r.rsp > 0)).length, notCounted = rows.filter(r => !r.counted).length, low = rows.filter(r => r.days_left != null && +r.days_left < +r.min_days).length;
+  const num = v => v == null || v === '' ? '' : +v;
+  el.innerHTML = `<section class="ui-metrics hero">${metric('สินค้าจริง', fmt(rows.length), 'รายการ', 'สินค้าจริงทุกตัวที่เคยขาย (แตกจากรหัส SKU) + ที่เพิ่มเอง')}${metric('ยังไม่มี RSP', fmt(noRsp), noRsp ? 'ชุดโปรที่มีสินค้าเหล่านี้จะหารเฉลี่ย' : 'ครบแล้ว', 'RSP ใช้แบ่งยอดชุดโปรในหน้ารายละเอียดออเดอร์')}
+      ${metric('ยังไม่ตั้งสต็อก', fmt(notCounted), 'ยังไม่กรอกสต็อกตั้งต้น', 'กรอกสต็อกตั้งต้น + วันที่นับ แล้วระบบเริ่มนับคงเหลือให้')}${metric('ใกล้หมด', fmt(low), 'ขายได้อีกน้อยกว่ากำหนด', 'ขายได้อีก (วัน) น้อยกว่าจำนวนวันขั้นต่ำของสินค้านั้น (ตั้งต้น 14 วัน)')}</section>
+    <section class="panel"><div class="panel-h"><h2>สินค้าและสต็อก ${tip('กรอกได้ในตาราง แล้วกดบันทึก<br>ชื่อ: ใช้แสดงทุกหน้า (เว้นว่าง = ใช้ชื่อจากไฟล์คำสั่งซื้อ)<br>RSP: ราคาต่อชิ้น ใช้แบ่งยอดชุดโปร<br>สต็อกตั้งต้น + วันที่นับ: เริ่มนับคงเหลือ = ตั้งต้น + รับเข้า − ส่งออก (นับชิ้นจริง ตั้งแต่วันที่นับ)<br>ขายได้อีก = คงเหลือ ÷ ส่งออกเฉลี่ย 30 วัน')}</h2>
+      <span style="flex:1"></span><span class="ui-muted" id="stDirty"></span><button type="button" class="btn pri" id="stSave" disabled>บันทึก</button></div>
+      <div class="wide"><table class="ui-table tbl st-tbl" data-no-sort data-no-page><thead><tr><th class="l">สินค้าจริง</th><th class="num">RSP (บาท)</th><th class="num">สต็อกตั้งต้น</th><th class="l">วันที่นับ</th><th class="num">รับเข้า</th><th class="num">ส่งออก</th><th class="num">คงเหลือ</th><th class="num">ส่งเฉลี่ย / วัน</th><th class="num">ขายได้อีก</th></tr></thead><tbody>
+      ${rows.map(r => `<tr data-sku="${esc(r.sku)}"><td class="l"><span class="ui-code">${esc(r.sku)}</span><input class="st-in st-name" data-f="name" value="${esc(r.name_set || '')}" placeholder="${esc(r.name !== r.sku ? r.name : 'ตั้งชื่อสินค้า')}"></td>
+        <td class="num"><input class="st-in st-n" data-f="rsp" type="number" min="0" step="0.01" value="${num(r.rsp)}" placeholder="—"></td>
+        <td class="num"><input class="st-in st-n" data-f="opening_stock" type="number" min="0" step="1" value="${num(r.opening_stock)}" placeholder="—"></td>
+        <td class="l"><input class="st-in" data-f="opening_date" type="date" value="${String(r.opening_date || '').slice(0, 10)}" max="${today}"></td>
+        <td class="num">${r.counted ? fmt(r.stock_in) : dash}</td><td class="num">${r.counted ? fmt(r.shipped) : dash}</td>
+        <td class="num">${r.counted ? `<b${+r.on_hand < 0 ? ' style="color:var(--bad)"' : ''}>${fmt(r.on_hand)}</b>` : dash}</td><td class="num">${fmt1(r.avg_day)}</td>
+        <td class="num">${r.days_left == null ? dash : `<span class="ui-chip ${+r.days_left < +r.min_days ? 'dn' : 'up'}">${fmt(r.days_left)} วัน</span>`}</td></tr>`).join('') || '<tr><td colspan="9" class="l ui-muted">ยังไม่มีสินค้า — อัปโหลดไฟล์คำสั่งซื้อก่อน</td></tr>'}
+      </tbody></table></div></section>
+    <section class="panel"><div class="panel-h"><h2>บันทึกรับสินค้าเข้า ${tip('จำนวนเป็นชิ้นจริง · นับเฉพาะรับเข้าตั้งแต่วันที่นับสต็อกตั้งต้นของสินค้านั้น')}</h2></div>
+      <div class="form-row"><select id="siSku" style="min-width:260px"><option value="">เลือกสินค้า</option>${rows.map(r => `<option value="${esc(r.sku)}">${esc(r.sku)} · ${esc(r.name)}</option>`).join('')}</select>
+      <input id="siQty" type="number" min="1" placeholder="จำนวน (ชิ้น)" style="width:130px"><input id="siDate" type="date" value="${today}" max="${today}"><input id="siNote" placeholder="หมายเหตุ" style="flex:1;min-width:160px"><button class="btn pri" id="siSave">บันทึก</button></div><div class="gate-err" id="siMsg" style="margin-top:6px"></div></section>`;
+  // แก้ในตาราง: เทียบกับค่าเดิม นับแถวที่เปลี่ยน แล้วบันทึกทีเดียว
+  const dirty = () => [...el.querySelectorAll('.st-tbl tbody tr[data-sku]')].filter(tr => [...tr.querySelectorAll('.st-in')].some(i => i.value !== i.defaultValue));
+  const mark = () => { const d = dirty(); el.querySelectorAll('.st-tbl tbody tr').forEach(tr => tr.classList.toggle('is-dirty', d.includes(tr))); document.getElementById('stSave').disabled = !d.length; document.getElementById('stDirty').textContent = d.length ? `แก้ไข ${fmt(d.length)} รายการ ยังไม่บันทึก` : ''; };
+  el.querySelectorAll('.st-in').forEach(i => { i.addEventListener('input', mark); i.addEventListener('change', mark); });
+  document.getElementById('stSave').onclick = async e => {
+    const btn = e.currentTarget, rowsOut = dirty().map(tr => { const v = f => tr.querySelector(`[data-f="${f}"]`).value.trim(); return { sku: tr.dataset.sku, name: v('name') || null, rsp: v('rsp') === '' ? null : +v('rsp'), opening_stock: v('opening_stock') === '' ? null : +v('opening_stock'), opening_date: v('opening_date') || null }; });
+    const bad = rowsOut.find(r => (r.opening_stock == null) !== (r.opening_date == null));
+    if (bad) { await uiAlert('กรอกสต็อกตั้งต้นและวันที่นับคู่กัน', { text: `สินค้า ${bad.sku}: ต้องมีทั้งจำนวนตั้งต้นและวันที่นับ หรือเว้นว่างทั้งคู่`, tone: 'bad' }); return; }
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก…';
+    try { await DB.upsert('products', rowsOut, 'sku'); clearCache(); route(); } catch (x) { btn.disabled = false; btn.textContent = 'บันทึก'; uiAlert('บันทึกไม่สำเร็จ', { text: x.message, tone: 'bad' }); }
+  };
+  document.getElementById('siSave').onclick = async () => {
+    const sku = siSku.value, qty = +siQty.value, msg = document.getElementById('siMsg');
+    if (!sku || !(qty > 0)) { msg.textContent = 'กรุณาเลือกสินค้าและกรอกจำนวน'; return; }
+    msg.textContent = ''; await DB.insert('stock_in', { sku, qty, moved_on: siDate.value, note: siNote.value || null }); clearCache(); route();
+  };
 }
 
 // ===== เงินเข้า =====
@@ -282,14 +382,15 @@ async function pageMoney(el) {
 }
 
 // ===== ตัวสลับหน้า (#ชื่อหน้า) =====
+function pageActs() { let a = document.getElementById('pageActs'); if (!a) { a = document.createElement('div'); a.id = 'pageActs'; a.className = 'page-acts'; document.getElementById('range').before(a); } return a; }
 async function route() {
-  closeCreator();
+  closeCreator(); pageActs().innerHTML = '';
   const id = (location.hash || '#overview').slice(1), pg = PAGES.find(p => p[0] === id) || PAGES[0];
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.p === pg[0]));
   document.getElementById('pageTitle').textContent = pg[1];
   document.getElementById('range').style.visibility = ['stock', 'upload'].includes(pg[0]) ? 'hidden' : 'visible';
   const el = document.getElementById('content'); el.innerHTML = pg[0] === 'upload' ? '' : SKEL;
-  try { await ({ overview: pageOverview, creators: pageCreators, products: pageProducts, stock: pageStock, money: pageMoney, upload: pageUpload })[pg[0]](el); limitRows(el); if (window.UI && UI.fit) UI.fit(); }
+  try { await ({ overview: pageOverview, creators: pageCreators, products: pageProducts, items: pageItems, stock: pageStock, money: pageMoney, upload: pageUpload })[pg[0]](el); limitRows(el); if (window.UI && UI.fit) UI.fit(); }
   catch (e) { el.innerHTML = `<div class="panel empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`; }
 }
 document.getElementById('appName').textContent = (window.APP && APP.NAME) || 'ระบบวิเคราะห์ยอดขาย'; document.title = document.getElementById('appName').textContent;
