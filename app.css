@@ -153,6 +153,34 @@ body { margin:0; display:flex; min-height:100vh; }
 .st-tbl td { vertical-align:middle; } .st-tbl .ui-code { display:block; font-size:12.5px; margin-bottom:4px; }
 .st-in { font:inherit; font-size:13px; height:32px; padding:0 9px; border:1px solid var(--border); border-radius:8px; background:var(--bg2); color:var(--text); }
 .st-in:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
-.st-name { width:260px; } .st-n { width:100px; text-align:right; font-variant-numeric:tabular-nums; }
+.st-nm { width:260px; }   /* ช่องชื่อในหน้าสต็อก (เดิมชื่อ st-name ชนกับชื่อสถานะในแถบสถานะ ทำให้หน้าภาพรวมกว้างเกินจอ) */ .st-n { width:100px; text-align:right; font-variant-numeric:tabular-nums; }
 .st-tbl tr.is-dirty > td { background:var(--accent-soft); }
 .st-tbl input[type=date] + .ui-datebtn { height:32px; }
+/* ===== (2026-11-09) ปรับหน้าตาทั้งเว็บ ===== */
+/* เมนูซ้าย: เป็นแผงของตัวเอง (พื้นขาว + เงา) แทนเส้นบาง · เมนูที่เลือกเป็นแถบสีทองอ่อน · มีไอคอน */
+.sb { background:var(--bg2); border-right:0; box-shadow:1px 0 0 var(--border), 8px 0 28px -18px rgba(15,23,42,.28); z-index:6; padding:18px 12px; }
+.sb-brand { padding:2px 6px 20px; } .sb nav { display:flex; flex-direction:column; gap:3px; }
+.sb nav a { gap:11px; padding:10px 12px; border-radius:10px; font-weight:500; color:var(--text2); transition:background .12s, color .12s; }
+.sb nav a svg { flex:none; color:var(--text3); transition:color .12s; } .sb nav a:hover { background:var(--bg3); color:var(--text); } .sb nav a:hover svg { color:var(--text2); }
+.sb nav a.on { background:var(--accent-soft); color:var(--accent-text); font-weight:700; box-shadow:none; } .sb nav a.on svg { color:var(--accent-text); }
+.sb-foot .sb-btn { background:var(--bg3); border-color:transparent; } .sb-foot .sb-btn:hover { color:var(--text); }
+.topbar { background:var(--bg2); }
+@media (max-width:900px) { .sb { box-shadow:0 1px 0 var(--border); padding:8px 12px; } .sb nav { flex-direction:row; } .sb nav a { padding:7px 10px; } .sb nav a svg { display:none; } }
+/* หัวตารางที่ล็อคตอนเลื่อน */
+.ui-table thead th { will-change:transform; } .ui-table thead th.is-pinned { box-shadow:0 1px 0 var(--border), 0 6px 10px -8px rgba(15,23,42,.25); z-index:4; }
+/* แหล่งที่มา */
+.src-dot { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:8px; vertical-align:-1px; }
+/* สถานะ 3 กลุ่ม: นับ / รอส่งถึง / ไม่นับ */
+.st-legend { display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:8px 18px; }
+.st-legend .st-gl { grid-column:span var(--span); } .st-gl.wait { --g:var(--blue); }
+.st-legend.compact { grid-template-columns:repeat(3, minmax(0, 1fr)); } .st-legend.compact .st-gl { display:none; }
+@media (max-width:900px) { .st-legend { grid-template-columns:repeat(2, minmax(0, 1fr)); } .st-legend .st-gl { display:none; } }
+/* สินค้าที่ส่ง: ตารางสินค้า × วัน · สีเข้ม = ส่งเยอะ · ชื่อสินค้าค้างซ้าย */
+.ship-tbl th, .ship-tbl td { padding-left:6px; padding-right:6px; } .ship-tbl .stick { min-width:230px; max-width:230px; padding-left:12px; } .ship-tbl .pn { display:block; max-width:210px; }
+.ship-tbl th.dcol { min-width:38px; text-align:center; line-height:1.2; } .ship-tbl th.dcol small { display:block; font-size:10.5px; font-weight:500; color:var(--text3); } .ship-tbl th.sun small { color:var(--bad); }
+.ship-tbl td.hc { text-align:center; font-size:12.5px; } .ship-tbl td.hc[style] { background:color-mix(in srgb, var(--accent) calc(var(--h) * 55%), transparent); color:var(--text); font-weight:600; }
+.ship-tbl .tot { background:var(--bg3); } .ship-tbl tfoot td { font-size:12.5px; text-align:center; } .ship-tbl tfoot td.l { text-align:left; }
+.ship-tbl tbody tr:hover td.hc:not([style]) { background:var(--bg3); }
+/* เงินเข้า: อ่านเป็นสมการ */
+.money-hero .ui-metric-l { font-weight:600; }
+.st-item > div { min-width:0; flex:1 1 0; }
