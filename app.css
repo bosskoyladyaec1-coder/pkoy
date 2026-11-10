@@ -184,3 +184,6 @@ body { margin:0; display:flex; min-height:100vh; }
 /* เงินเข้า: อ่านเป็นสมการ */
 .money-hero .ui-metric-l { font-weight:600; }
 .st-item > div { min-width:0; flex:1 1 0; }
+/* (2026-11-10) สินค้าขายดี: ชื่อกว้างพอดี · คอลัมน์ตัวเลขไม่ห่างเกิน */
+.tbl.prod .pn { max-width:420px; } .tbl.prod td.l .pn { line-height:1.45; } .tbl.prod th:nth-child(4), .tbl.prod td:nth-child(4) { width:150px; }
+.md .ui-chip { font-size:11.5px; padding:0 6px; margin-right:2px; cursor:help; }
