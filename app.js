@@ -93,6 +93,16 @@ function initRange() {
   const [a, b] = presets()['เดือนนี้']; RANGE = { from: a, to: b }; drawRangeBtn();
 }
 const inRange = q => q.gte('d', RANGE.from).lte('d', RANGE.to);
+function prevRange(r = RANGE) {
+  const a = pDate(r.from), b = pDate(r.to);
+  if (a.getDate() === 1) { const end = new Date(b.getFullYear(), b.getMonth(), 0), sameDay = new Date(b.getFullYear(), b.getMonth() - 1, b.getDate());
+    const lastOfMonth = b.getDate() === new Date(b.getFullYear(), b.getMonth() + 1, 0).getDate();
+    return { from: ymd(new Date(a.getFullYear(), a.getMonth() - 1, 1)), to: ymd(lastOfMonth || sameDay > end ? end : sameDay) }; }
+  const n = days(r.from, r.to).length; return { from: ymd(new Date(a.getFullYear(), a.getMonth(), a.getDate() - n)), to: ymd(new Date(a.getFullYear(), a.getMonth(), a.getDate() - 1)) };
+}
+const cmpChip = (now, before, PR, f = fmt, neutral) => { if (!before) return ''; const g = (now - before) / before * 100, cls = neutral || Math.abs(g) < 0.5 ? '' : g > 0 ? 'up' : 'dn';
+  return `<span class="ui-chip ${cls}" data-tip="${esc(`${rangeText(PR.from, PR.to)}: ${f(before)}`)}">${g > 0 ? '+' : ''}${g.toFixed(Math.abs(g) < 10 ? 1 : 0)}%</span>`; };
+const growth = (now, before) => { if (!before) return now ? '<span class="ui-chip">ใหม่</span>' : dash; const g = (now - before) / before * 100; return `<span class="ui-chip ${Math.abs(g) < 0.5 ? '' : g > 0 ? 'up' : 'dn'}">${g > 0 ? '+' : ''}${g.toFixed(Math.abs(g) < 10 ? 1 : 0)}%</span>`; };
 const metric = (label, value, sub, info) => `<div class="ui-metric is-static"><span class="ui-metric-l">${label}${info ? ' ' + tip(info) : ''}</span><span class="ui-metric-v" data-fit>${value}</span><span class="md">${sub || '&nbsp;'}</span></div>`;
 const chart = (id, cfg) => { if (CHARTS[id]) CHARTS[id].destroy(); const el = document.getElementById(id); if (el) CHARTS[id] = new Chart(el, cfg); };
 const css = v => getComputedStyle(document.body).getPropertyValue(v).trim();
@@ -105,14 +115,14 @@ const IDB = (() => { let dbp = null;
   const open = () => dbp || (dbp = new Promise((res, rej) => { const r = indexedDB.open('sales-cache', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }));
   const run = (mode, fn) => open().then(db => new Promise((res, rej) => { const t = db.transaction('kv', mode), r = fn(t.objectStore('kv')); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }));
   return { get: k => run('readonly', s => s.get(k)).catch(() => undefined), set: (k, v) => run('readwrite', s => s.put(v, k)).catch(() => {}), clear: () => run('readwrite', s => s.clear()).catch(() => {}) }; })();
-const ckey = (view, ranged) => view + (ranged ? '|' + RANGE.from + '|' + RANGE.to : '');
+const ckey = (view, ranged, rng = RANGE) => view + (ranged ? '|' + rng.from + '|' + rng.to : '');
 const pull = (k, view, ranged, rng) => DB.select(view, '*', ranged ? q => q.gte('d', rng.from).lte('d', rng.to) : undefined).then(d => { IDB.set(k, d); return d; });
 function refresh(k, view, ranged, rng, oldP) {
   const m = CACHE.get(k); if (m) m.t = Date.now();
   Promise.all([pull(k, view, ranged, rng), oldP]).then(([d, old]) => { if (JSON.stringify(d) === JSON.stringify(old)) return; CACHE.set(k, { p: Promise.resolve(d), t: Date.now() }); redrawSoon(); }).catch(() => {});
 }
-function sel(view, ranged = true) {
-  const k = ckey(view, ranged), rng = { ...RANGE }, m = CACHE.get(k);
+function sel(view, ranged = true, range = RANGE) {
+  const rng = { ...range }, k = ckey(view, ranged, rng), m = CACHE.get(k);
   if (m) { if (Date.now() - m.t > 600000) refresh(k, view, ranged, rng, m.p); return m.p; }   // เกิน 10 นาที: ใช้ของเดิมก่อน แล้วโหลดใหม่เบื้องหลัง
   const p = IDB.get(k).then(saved => { if (saved === undefined) return pull(k, view, ranged, rng); refresh(k, view, ranged, rng, Promise.resolve(saved)); return saved; });
   CACHE.set(k, { p, t: Date.now() }); p.catch(() => CACHE.delete(k)); return p;
@@ -157,18 +167,21 @@ function limitRows(root) {   // ตารางที่มี data-limit="n": �
 // ===== ภาพรวม: ยอดขาย (เฉพาะส่งสำเร็จ) · ออเดอร์ · AOV · ยอดผ่าน Creator · รอส่งถึง + สถานะออเดอร์ + กราฟรายวัน + แหล่งที่มา + สินค้าขายดี =====
 const SALE_INFO = 'นับเฉพาะออเดอร์ที่<b>ส่งสำเร็จ</b> (ลูกค้าได้รับของแล้ว)<br><b>ไม่รวม</b> กำลังส่ง / คืนสินค้า / ตีกลับ / ยกเลิก';
 async function pageOverview(el) {
-  const [rows, B, I, N, STA] = await Promise.all([sel('v_sales_daily'), sel('v_basket_daily'), sel('v_item_sales_daily'), sel('v_item_names', false), sel('v_status_daily')]);
+  const PR = prevRange(), [rows, B, I, N, STA, B0, I0, S0] = await Promise.all([sel('v_sales_daily'), sel('v_basket_daily'), sel('v_item_sales_daily'), sel('v_item_names', false), sel('v_status_daily'), sel('v_basket_daily', true, PR), sel('v_item_sales_daily', true, PR), sel('v_sales_daily', true, PR)]);
   if (!rows.length && !STA.length) return el.innerHTML = '<div class="panel empty-note">ยังไม่มียอดขายในช่วงนี้ — อัปโหลดไฟล์คำสั่งซื้อที่หน้า "อัปโหลด"</div>';
   const T = rows.reduce((a, r) => ({ rev: a.rev + +r.revenue, ord: a.ord + +r.orders }), { rev: 0, ord: 0 });
   const bySrc = {}; rows.forEach(r => { const s = bySrc[r.source] = bySrc[r.source] || { rev: 0, ord: 0 }; s.rev += +r.revenue; s.ord += +r.orders; });
   const aff = Object.entries(bySrc).filter(([k]) => k.startsWith('Creator')).reduce((a, [, v]) => a + v.rev, 0);
+  const T0 = S0.reduce((a, r) => ({ rev: a.rev + +r.revenue, ord: a.ord + +r.orders, aff: a.aff + (String(r.source).startsWith('Creator') ? +r.revenue : 0) }), { rev: 0, ord: 0, aff: 0 }), hasPrev = T0.rev > 0;
+  const share0 = T0.rev ? T0.aff / T0.rev * 100 : 0, shareNow = T.rev ? aff / T.rev * 100 : 0, pts = shareNow - share0;
+  const cmpInfo = hasPrev ? `<br>ป้าย = เทียบกับ ${rangeText(PR.from, PR.to)} (ชี้ที่ป้ายเพื่อดูค่าช่วงก่อน)` : '';
   const wait = STA.filter(r => r.state === 'กำลังส่ง').reduce((a, r) => ({ rev: a.rev + +r.revenue, ord: a.ord + +r.orders }), { rev: 0, ord: 0 });
   const srcs = Object.keys(bySrc).sort((a, b) => bySrc[b].rev - bySrc[a].rev), ds = days(RANGE.from, RANGE.to);
   el.innerHTML = `<section class="ui-metrics hero">
-      ${metric('ยอดขาย', fmt(T.rev), `${ds.length} วัน · เฉลี่ย ${fmt(T.rev / ds.length)} / วัน`, 'ยอดสินค้าหลังส่วนลด <b>ไม่รวม</b>ค่าส่ง · นับตามวันที่สั่งซื้อ (เวลาไทย)<br>' + SALE_INFO)}
-      ${metric('ออเดอร์', fmt(T.ord), 'ส่งสำเร็จ', SALE_INFO)}
-      ${metric('AOV', fmt(T.ord ? T.rev / T.ord : 0), 'ยอดขาย ÷ ออเดอร์', 'ยอดขายเฉลี่ยต่อออเดอร์ที่ส่งสำเร็จ')}
-      ${metric('ยอดผ่าน Creator', T.rev ? (aff / T.rev * 100).toFixed(1) + '%' : '—', 'ยอด ' + fmt(aff), 'ยอดของออเดอร์ที่มี Creator (ไม่นับบัญชีร้านเอง) ÷ ยอดขาย')}
+      ${metric('ยอดขาย', fmt(T.rev), `${cmpChip(T.rev, T0.rev, PR)} เฉลี่ย ${fmt(T.rev / ds.length)} / วัน`, 'ยอดสินค้าหลังส่วนลด <b>ไม่รวม</b>ค่าส่ง · นับตามวันที่สั่งซื้อ (เวลาไทย)<br>' + SALE_INFO + cmpInfo)}
+      ${metric('ออเดอร์', fmt(T.ord), `${cmpChip(T.ord, T0.ord, PR)} ส่งสำเร็จ`, SALE_INFO + cmpInfo)}
+      ${metric('AOV', fmt(T.ord ? T.rev / T.ord : 0), `${cmpChip(T.ord ? T.rev / T.ord : 0, T0.ord ? T0.rev / T0.ord : 0, PR)} ยอดขาย ÷ ออเดอร์`, 'ยอดขายเฉลี่ยต่อออเดอร์ที่ส่งสำเร็จ' + cmpInfo)}
+      ${metric('ยอดผ่าน Creator', T.rev ? shareNow.toFixed(1) + '%' : '—', `${hasPrev ? `<span class="ui-chip" data-tip="${esc(`${rangeText(PR.from, PR.to)}: ${share0.toFixed(1)}%`)}">${pts > 0 ? '+' : ''}${pts.toFixed(1)} จุด</span> ` : ''}ยอด ${fmt(aff)}`, 'ยอดของออเดอร์ที่มี Creator (ไม่นับบัญชีร้านเอง) ÷ ยอดขาย' + (hasPrev ? `<br>ป้าย = เปลี่ยนกี่จุดจาก ${rangeText(PR.from, PR.to)} (ไม่ใช่ดี / ไม่ดี จึงเป็นสีเทา)` : ''))}
       ${metric('รอส่งถึงลูกค้า', fmt(wait.rev), `${fmt(wait.ord)} ออเดอร์ · ยังไม่นับในยอดขาย`, 'ออเดอร์ที่ยังอยู่ระหว่างส่ง จะนับเป็นยอดขายเมื่อส่งสำเร็จ (อัปไฟล์คำสั่งซื้อรอบถัดไป)')}
     </section>
     <section class="panel"><div class="panel-h"><h2>สถานะออเดอร์ ${tip('นับตามวันที่สั่งซื้อ ทุกออเดอร์รวมที่ยกเลิก<br>นับเป็นยอดขาย = ส่งสำเร็จเท่านั้น (ตรงกับยอดขาย / ออเดอร์ในแถบบน)<br>% = สัดส่วนของออเดอร์ทั้งหมด · ตีกลับเทียบกับพัสดุที่ส่งออกไปแล้ว')}</h2><span class="ui-muted">ออเดอร์ทั้งหมด ${statusTotal(STA)} (รวมยกเลิก)</span></div>${statusStrip(STA)}</section>
@@ -180,7 +193,7 @@ async function pageOverview(el) {
     <section class="panel" id="prodPanel"><div class="panel-h"><h2>สินค้าขายดี ${tip('ตะกร้า = สินค้าที่ลูกค้ากดซื้อ (Product Name)<br>สินค้าจริง = แตกชุดโปรเป็นสินค้าตามรหัส SKU · ยอดของชุดโปรแบ่งให้แต่ละสินค้าตาม RSP (ยังไม่มี RSP = หารเฉลี่ย)<br>' + SALE_INFO)}</h2>
       <span style="flex:1"></span><div class="ui-presets" id="prodTabs">${Object.entries(PROD_TABS).map(([k, n]) => `<button type="button" data-t="${k}" aria-pressed="${k === PROD_TAB}">${n}</button>`).join('')}</div></div>
       <div class="wide" id="prodBody"></div></section>`;
-  const P = prodData(B, I, N);
+  const P = prodData(B, I, N, B0, I0, PR);
   const drawProd = () => { document.getElementById('prodBody').innerHTML = prodTable(P); document.querySelectorAll('#prodTabs button').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === PROD_TAB)); if (window.UI && UI.fit) UI.fit(); pinSoon(); };
   document.querySelectorAll('#prodTabs button').forEach(b => b.onclick = () => { PROD_TAB = b.dataset.t; drawProd(); });
   drawProd();
@@ -211,24 +224,30 @@ const statusTotal = rows => fmt(rows.reduce((a, r) => a + +r.orders, 0));
 // ===== สินค้าขายดี (ในหน้าภาพรวม): ตะกร้า / SKU / สินค้าจริง · รวมยอดจาก view รายวันของแต่ละแบบ =====
 let PROD_TAB = 'basket';
 const PROD_TABS = { basket: 'ตะกร้า', item: 'สินค้าจริง' };
-function prodData(B, I, N) {   // B = ตะกร้าต่อวัน (basket, revenue, orders, skus) · I = สินค้าจริงต่อวัน (item, amount, orders) จากยอดที่แบ่งแล้ว
-  const P = { basket: {}, item: {}, names: Object.fromEntries(N.map(r => [r.item, r.name])), T: { rev: 0, itemRev: 0 } };
-  B.forEach(r => { const x = P.basket[r.basket] = P.basket[r.basket] || { rev: 0, ord: 0, skus: new Set() }; x.rev += +r.revenue; x.ord += +r.orders; (r.skus || []).forEach(k => x.skus.add(k)); P.T.rev += +r.revenue; });
+function prodData(B, I, N, B0, I0, PR) {   // B / I = ช่วงที่เลือก · B0 / I0 = ช่วงก่อนหน้า (ไม่มี = ไม่แสดงคอลัมน์เทียบ)
+  const P = { basket: {}, item: {}, names: Object.fromEntries(N.map(r => [r.item, r.name])), T: { rev: 0, itemRev: 0 }, prev: { basket: {}, item: {} }, PR, hasPrev: !!(B0 && B0.length) };
+  B.forEach(r => { const x = P.basket[r.basket] = P.basket[r.basket] || { rev: 0, ord: 0 }; x.rev += +r.revenue; x.ord += +r.orders; P.T.rev += +r.revenue; });
   I.forEach(r => { const x = P.item[r.item] = P.item[r.item] || { rev: 0, ord: 0 }; x.rev += +r.amount; x.ord += +r.orders; P.T.itemRev += +r.amount; });
+  (B0 || []).forEach(r => P.prev.basket[r.basket] = (P.prev.basket[r.basket] || 0) + +r.revenue);
+  (I0 || []).forEach(r => P.prev.item[r.item] = (P.prev.item[r.item] || 0) + +r.amount);
   return P;
 }
 function prodTable(P, TAB = PROD_TAB) {
   const share = (v, t) => { const p = t ? v / t * 100 : 0; return `<span class="bar"><b style="width:${p.toFixed(1)}%"></b></span>${p > 0 && p < 1 ? '&lt;1' : Math.round(p)}%`; };
   const ordH = `<th class="num">ออเดอร์ ${tip('จำนวนออเดอร์ที่ซื้อรายการนี้<br>1 ออเดอร์ซื้อได้หลายรายการ แถวรวมจึงไม่รวมช่องนี้ (จำนวนออเดอร์จริงดูที่แถบบน)')}</th>`;
-  const table = (head, body, foot) => `<table class="ui-table tbl prod" data-no-sort data-no-page><thead><tr>${head}</tr></thead><tbody>${body}</tbody><tfoot><tr>${foot}</tr></tfoot></table>`;
+  const avgH = `<th class="num">เฉลี่ย / ออเดอร์ ${tip('ยอดขายของรายการนี้ ÷ ออเดอร์ที่ซื้อรายการนี้')}</th>`;
+  const cmpH = P.hasPrev ? `<th class="num">เทียบช่วงก่อน ${tip(`ยอดขายเทียบกับ ${rangeText(P.PR.from, P.PR.to)}<br>เขียว = โต · แดง = ตก · ใหม่ = ช่วงก่อนไม่มียอด`)}</th>` : '';
+  const row = (i, nameCell, x, tot, prev) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l">${nameCell}</td><td class="num">${fmt(x.rev)}</td><td class="l">${share(x.rev, tot)}</td><td class="num">${fmt(x.ord)}</td><td class="num">${fmt(x.ord ? x.rev / x.ord : 0)}</td>${P.hasPrev ? `<td class="num">${growth(x.rev, prev)}</td>` : ''}</tr>`;
+  const foot = (label, tot, prevTot) => `<td></td><td class="l">${label}</td><td class="num">${fmt(tot)}</td><td class="l">100%</td><td></td><td></td>${P.hasPrev ? `<td class="num">${growth(tot, prevTot)}</td>` : ''}`;
+  const table = (head, body, f) => `<table class="ui-table tbl prod" data-no-sort data-no-page><thead><tr>${head}</tr></thead><tbody>${body}</tbody><tfoot><tr>${f}</tr></tfoot></table>`;
+  const sum = o => Object.values(o).reduce((a, v) => a + v, 0);
   if (TAB === 'basket') { const L = Object.entries(P.basket).sort((a, b) => b[1].rev - a[1].rev);
-    return L.length ? table(`<th class="num">#</th><th class="l">ตะกร้า</th><th class="num">ยอดขาย</th><th class="l">สัดส่วน</th>${ordH}`,
-      L.map(([n, x], i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l"><span class="pn ui-trunc">${esc(n)}</span><small>${fmt(x.skus.size)} SKU</small></td><td class="num">${fmt(x.rev)}</td><td class="l">${share(x.rev, P.T.rev)}</td><td class="num">${fmt(x.ord)}</td></tr>`).join(''),
-      `<td></td><td class="l">รวม ${fmt(L.length)} ตะกร้า</td><td class="num">${fmt(P.T.rev)}</td><td class="l">100%</td><td></td>`) : '<div class="empty-note">ไม่มีสินค้าในช่วงนี้</div>'; }
+    return L.length ? table(`<th class="num">#</th><th class="l">ตะกร้า</th><th class="num">ยอดขาย</th><th class="l">สัดส่วน</th>${ordH}${avgH}${cmpH}`,
+      L.map(([n, x], i) => row(i, `<span class="pn ui-trunc">${esc(n)}</span>`, x, P.T.rev, P.prev.basket[n])).join(''), foot(`รวม ${fmt(L.length)} ตะกร้า`, P.T.rev, sum(P.prev.basket))) : '<div class="empty-note">ไม่มีสินค้าในช่วงนี้</div>'; }
   const L = Object.entries(P.item).sort((a, b) => b[1].rev - a[1].rev);
-  return L.length ? table(`<th class="num">#</th><th class="l">สินค้าจริง</th><th class="num">ยอดขาย ${tip('ยอดที่แบ่งให้สินค้าแต่ละตัว (ชุดโปรแบ่งตาม RSP / หารเฉลี่ย) รวมกันเท่ายอดขาย')}</th><th class="l">สัดส่วน</th>${ordH}`,
-    L.map(([k, x], i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l">${P.names[k] && P.names[k] !== k ? `<span class="pn ui-trunc">${esc(P.names[k])}</span><small class="ui-code">${esc(k)}</small>` : `<span class="pn ui-code">${esc(k)}</span><small>ยังไม่มีชื่อ</small>`}</td><td class="num">${fmt(x.rev)}</td><td class="l">${share(x.rev, P.T.itemRev)}</td><td class="num">${fmt(x.ord)}</td></tr>`).join(''),
-    `<td></td><td class="l">รวม ${fmt(L.length)} รายการ</td><td class="num">${fmt(P.T.itemRev)}</td><td class="l">100%</td><td></td>`) : '<div class="empty-note">ไม่มีสินค้าในช่วงนี้</div>';
+  return L.length ? table(`<th class="num">#</th><th class="l">สินค้าจริง</th><th class="num">ยอดขาย ${tip('ยอดที่แบ่งให้สินค้าแต่ละตัว (ชุดโปรแบ่งตาม RSP / หารเฉลี่ย) รวมกันเท่ายอดขาย')}</th><th class="l">สัดส่วน</th>${ordH}${avgH}${cmpH}`,
+    L.map(([k, x], i) => row(i, P.names[k] && P.names[k] !== k ? `<span class="pn ui-trunc">${esc(P.names[k])}</span><small class="ui-code">${esc(k)}</small>` : `<span class="pn ui-code">${esc(k)}</span><small>ยังไม่มีชื่อ</small>`, x, P.T.itemRev, P.prev.item[k])).join(''),
+    foot(`รวม ${fmt(L.length)} รายการ`, P.T.itemRev, sum(P.prev.item))) : '<div class="empty-note">ไม่มีสินค้าในช่วงนี้</div>';
 }
 
 // ===== Creator: ใครขายได้เท่าไร =====
@@ -262,7 +281,7 @@ async function openCreator(name, c, typesText, stRows) {
   bg.onclick = closeCreator; dr.querySelector('.dr-x').onclick = closeCreator; document.addEventListener('keydown', drKey);
   let R, OI, N; try { [R, OI, N] = await Promise.all([crSel('v_creator_sku_daily', name), crSel('v_order_items', name), sel('v_item_names', false)]); } catch (e) { dr.querySelector('.dr-body').innerHTML = `<div class="panel empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`; return; }
   if (!dr.isConnected) return;
-  const B = Object.values(R.reduce((m, r) => { const x = m[r.basket] = m[r.basket] || { basket: r.basket, revenue: 0, orders: 0, skus: [] }; x.revenue += +r.revenue; x.orders += +r.orders; x.skus.push(r.sku); return m; }, {}));
+  const B = Object.values(R.reduce((m, r) => { const x = m[r.basket] = m[r.basket] || { basket: r.basket, revenue: 0, orders: 0 }; x.revenue += +r.revenue; x.orders += +r.orders; return m; }, {}));
   const I = Object.values(OI.reduce((m, r) => { const x = m[r.item] = m[r.item] || { item: r.item, amount: 0, ids: new Set() }; x.amount += +r.amount; x.ids.add(r.order_id); return m; }, {})).map(x => ({ item: x.item, amount: x.amount, orders: x.ids.size }));
   const P = prodData(B, I, N), st = stRows.reduce((m, r) => (m[r.state] = (m[r.state] || 0) + +r.orders, m), {}), sent = (st['ส่งสำเร็จ'] || 0) + (st['คืนสินค้า'] || 0) + (st['ตีกลับ'] || 0);
   const body = dr.querySelector('.dr-body');
