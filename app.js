@@ -201,7 +201,7 @@ async function pageOverview(el) {
   drawProd();
   chart('cSales', { type: 'bar', data: { labels: ds.map(dTh), datasets: srcs.map(s => ({ label: s, data: ds.map(d => rows.filter(r => r.d === d && r.source === s).reduce((a, r) => a + +r.revenue, 0)), backgroundColor: srcColor(s), borderColor: srcColor(s), borderWidth: 0, borderRadius: 3, stack: 's' })) },
     options: { maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { position: 'bottom', labels: { color: css('--text2'), boxWidth: 10 } },
+      plugins: { legend: { position: 'top', align: 'end', labels: { color: css('--text2'), boxWidth: 10, boxHeight: 10, padding: 14 } },
         tooltip: { uiShare: true, itemSort: (a, b) => b.parsed.y - a.parsed.y, filter: i => i.parsed.y > 0,
           callbacks: { title: it => dFull(ds[it[0].dataIndex]), label: c => `${c.dataset.label}: ${fmt(c.parsed.y)}`, footer: it => 'รวม: ' + fmt(it.reduce((a, i) => a + i.parsed.y, 0)) } } }, scales: { x: { stacked: true, ticks: { color: css('--text3'), maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }, grid: { display: false } }, y: { stacked: true, ticks: { color: css('--text3') }, grid: { color: css('--grid') || 'rgba(0,0,0,.06)' } } } } });
 }
@@ -328,32 +328,49 @@ async function pageProducts(el) {
 const fmt2 = v => (+v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const METHOD = { 'ไม่ต้องแบ่ง': '', 'ตาม RSP': 'good', 'หารเฉลี่ย': 'warn' };
 const SALE_STATES = ['ส่งสำเร็จ'];
-let IT = { page: 0, q: '' };
+let IT = { page: 0, q: '', tab: 'basket' };
 const IT_PER = 20;
 async function pageItems(el) {
   const tok = ROUTE_TOK;
-  const [S, T, N, PR] = await Promise.all([sel('v_item_sales_daily'), sel('v_sales_daily'), sel('v_item_names', false), sel('products', false)]);
+  const [S, T, N, PR, BM] = await Promise.all([sel('v_item_sales_daily'), sel('v_sales_daily'), sel('v_item_names', false), sel('products', false), sel('v_basket_money_daily')]);
   if (stale(tok)) return;
   if (!T.length) return el.innerHTML = '<div class="panel empty-note">ยังไม่มียอดขายในช่วงนี้</div>';
   const names = Object.fromEntries(N.map(r => [r.item, r.name])), rsp = Object.fromEntries(PR.filter(r => +r.rsp > 0).map(r => [r.sku, +r.rsp]));
   const by = {}; S.forEach(r => { const x = by[r.item] = by[r.item] || { pcs: 0, amt: 0, avg: 0, byRsp: 0 }; x.pcs += +r.pcs; x.amt += +r.amount; x.avg += +r.pcs_avg; x.byRsp += +r.pcs_rsp; });
   const L = Object.entries(by).sort((a, b) => b[1].amt - a[1].amt), A = L.reduce((a, [, x]) => ({ pcs: a.pcs + x.pcs, amt: a.amt + x.amt, avg: a.avg + x.avg, byRsp: a.byRsp + x.byRsp }), { pcs: 0, amt: 0, avg: 0, byRsp: 0 });
   const rev = T.reduce((a, r) => a + +r.revenue, 0), ord = T.reduce((a, r) => a + +r.orders, 0), same = Math.abs(rev - A.amt) < 0.005;
+  // เงินที่ได้รับจริงต่อตะกร้า (ออเดอร์ที่สั่งในช่วงนี้)
+  const K = ['sales', 'sales_settled', 'sales_pending', 'received', 'subtotal', 'fees', 'commission', 'refund', 'orders', 'orders_pending', 'orders_other'];
+  const bm = {}; BM.forEach(r => { const x = bm[r.basket] = bm[r.basket] || Object.fromEntries(K.map(k => [k, 0])); K.forEach(k => x[k] += +r[k] || 0); });
+  const BL = Object.entries(bm).filter(([, x]) => x.sales || x.received).sort((a, b) => b[1].sales - a[1].sales), M = Object.fromEntries(K.map(k => [k, BL.reduce((a, [, x]) => a + x[k], 0)]));
+  M.orders = ord;   // แถวรวม: ออเดอร์ที่มีหลายตะกร้านับครั้งเดียว (เท่าการ์ดยอดขาย / หน้าภาพรวม)
+  const moneyTip = x => moneyLines(x) + (x.orders_other ? `\n(รวมออเดอร์คืนสินค้า / ตีกลับ ${fmt(x.orders_other)} ออเดอร์)` : '');
   const wayTip = x => [x.pcs - x.avg - x.byRsp ? `ขายเดี่ยว ไม่ต้องแบ่ง ${fmt(x.pcs - x.avg - x.byRsp)} ชิ้น` : '', x.byRsp ? `อยู่ในชุดโปร แบ่งตาม RSP ${fmt(x.byRsp)} ชิ้น` : '', x.avg ? `อยู่ในชุดโปร หารเฉลี่ย ${fmt(x.avg)} ชิ้น (ยังไม่มี RSP ครบในชุด)` : ''].filter(Boolean).join('\n');
-  pageActs().innerHTML = `${same ? '' : `<span class="ui-badge bad it-chk" data-tip="${esc(`แยกเป็นรายชิ้นแล้วรวมกลับ ${fmt2(A.amt)}\nยอดขาย ${fmt2(rev)}\nไม่ตรงกัน กรุณาแจ้งผู้ดูแลระบบ`)}">! รวมกลับไม่ตรงกับยอดขาย</span>`}
-    <button type="button" class="btn pri it-dl" id="itDl"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>ดาวน์โหลด Excel</button>`;
-  el.innerHTML = `<section class="ui-metrics hero">${metric('ออเดอร์', fmt(ord), 'ส่งสำเร็จ', SALE_INFO)}${metric('ชิ้นจริง', fmt(A.pcs), fmt(L.length) + ' รายการสินค้า', 'แตกชุดโปรเป็นชิ้นตามรหัส SKU')}
-      ${metric('ยอดขาย', fmt2(rev), 'ทศนิยม 2 ตำแหน่ง', 'SKU Subtotal After Discount (ยอดหลังส่วนลด ไม่รวมค่าส่ง) ตัวเดียวกับหน้าภาพรวม<br>' + SALE_INFO)}
+  const RECV_INFO = 'เงินที่ TikTok โอนเข้าจริงตามรายงานรับเงิน หักค่าธรรมเนียม / ค่าคอม Creator / คืนเงินลูกค้าแล้ว<br>รวมทุกออเดอร์ที่สั่งในช่วงนี้ รวมออเดอร์คืนสินค้า / ตีกลับ (มักติดลบ) = เงินที่ร้านได้จริง<br>ออเดอร์ที่มีหลายตะกร้า แบ่งเงินตามสัดส่วนยอดขายของแต่ละตะกร้า';
+  pageActs().innerHTML = same ? '' : `<span class="ui-badge bad it-chk" data-tip="${esc(`แยกเป็นรายชิ้นแล้วรวมกลับ ${fmt2(A.amt)}\nยอดขาย ${fmt2(rev)}\nไม่ตรงกัน กรุณาแจ้งผู้ดูแลระบบ`)}">! รวมกลับไม่ตรงกับยอดขาย</span>`;
+  el.innerHTML = `<section class="ui-metrics hero">
+      ${metric('ยอดขาย', fmt2(rev), `${fmt(ord)} ออเดอร์ส่งสำเร็จ`, 'SKU Subtotal After Discount (ยอดหลังส่วนลด ไม่รวมค่าส่ง) ตัวเดียวกับหน้าภาพรวม<br>' + SALE_INFO)}
+      ${metric('ได้รับจริง', fmt2(M.received), M.sales_settled ? `จากยอดขายที่โอนแล้ว ${fmt2(M.sales_settled)}` : 'ยังไม่มีออเดอร์ที่โอนแล้ว', RECV_INFO)}
+      ${metric('รอโอน', fmt2(M.sales_pending), `${fmt(M.orders_pending)} ออเดอร์ส่งสำเร็จแล้ว แต่ TikTok ยังไม่โอน`, 'ยอดขายของออเดอร์ที่ส่งสำเร็จแล้ว แต่ยังไม่มีในรายงานรับเงิน<br>อัปรายงานรับเงินรอบถัดไปแล้วจะย้ายไปอยู่ใน "ได้รับจริง"')}
       ${metric('ชิ้นที่ยังหารเฉลี่ย', fmt(A.avg), A.byRsp ? `ตาม RSP แล้ว ${fmt(A.byRsp)} ชิ้น` : 'ยังไม่มีราคา RSP', 'ชิ้นที่อยู่ในชุดโปรและยังไม่มี RSP ครบทุกตัวในชุด จึงแบ่งยอดแบบหารเฉลี่ยเท่ากันทุกชิ้น<br>กรอก RSP ที่หน้าสต็อกแล้ว ระบบแบ่งตามสัดส่วน RSP ให้เอง')}</section>
-    <section class="panel"><div class="panel-h"><h2>สรุปรายสินค้าจริง ${tip('ยอดหลังแบ่ง = ยอดของบรรทัดที่แบ่งให้สินค้าแต่ละตัวแล้ว รวมกันเท่ายอดขาย<br>ราคาเฉลี่ยต่อชิ้น = ยอดหลังแบ่ง ÷ ชิ้น')}</h2></div><div class="wide">
-      <table class="ui-table tbl prod" data-no-sort data-no-page><thead><tr><th class="num">#</th><th class="l">สินค้าจริง</th><th class="num">ชิ้น</th><th class="num">ยอดหลังแบ่ง</th><th class="num">ราคาเฉลี่ย / ชิ้น</th><th class="num">RSP ${tip('ราคา RSP ต่อชิ้น ใช้แบ่งยอดชุดโปร (กรอกที่หน้าสต็อก)<br>ชี้ที่ช่องเพื่อดูว่าแบ่งยอดแบบไหนกี่ชิ้น')}</th></tr></thead><tbody>
+    <section class="panel" id="itSum"><div class="panel-h"><h2>สรุปยอดขายและเงินที่ได้รับจริง ${tip(RECV_INFO)}</h2><span class="panel-sub">ออเดอร์ที่สั่งในช่วงนี้</span>
+      <span style="flex:1"></span><div class="ui-presets" id="itTabs"><button type="button" data-t="basket">ตะกร้า</button><button type="button" data-t="item">สินค้าจริง</button></div></div><div class="wide" id="itSumBody"></div></section>
+    <section class="panel" id="itOrders"><div class="panel-h"><h2>รายการออเดอร์ ${tip('ออเดอร์ที่ส่งสำเร็จ แตกเป็นสินค้าจริง<br>ยอดของแต่ละบรรทัด (SKU) แบ่งให้สินค้าในชุด เศษสตางค์ไปรวมที่สินค้าตัวสุดท้าย รวมกลับเท่ายอดบรรทัดเสมอ<br>ได้รับจริง = เงินทั้งออเดอร์ตามรายงานรับเงิน')}</h2>
+      <span style="flex:1"></span><div class="form-row"><input type="search" id="itQ" placeholder="ค้นหาหมายเลขคำสั่งซื้อ" value="${esc(IT.q)}" style="width:230px"><button type="button" class="btn" id="itGo">ค้นหา</button>
+      <button type="button" class="btn pri it-dl" id="itDl" data-tip="${esc(`ออเดอร์ที่ส่งสำเร็จทั้งหมด ${rangeText(RANGE.from, RANGE.to)}\nชีต 1 รายละเอียด: 1 แถว = สินค้าจริง 1 ตัว + เงินได้รับจริงราย SKU\nชีต 2 สรุปรายตะกร้า · ชีต 3 สรุปรายสินค้า`)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>ดาวน์โหลด Excel</button></div></div><div id="itBody"><div class="ui-skel sk-box"></div></div></section>`;
+  const sumBody = () => {
+    if (IT.tab === 'item') return `<table class="ui-table tbl prod" data-no-sort data-no-page><thead><tr><th class="num">#</th><th class="l">สินค้าจริง</th><th class="num">ชิ้น</th><th class="num">ยอดหลังแบ่ง ${tip('ยอดของบรรทัดที่แบ่งให้สินค้าแต่ละตัวแล้ว รวมกันเท่ายอดขาย')}</th><th class="num">ราคาเฉลี่ย / ชิ้น ${tip('ยอดหลังแบ่ง ÷ ชิ้น')}</th><th class="num">RSP ${tip('ราคา RSP ต่อชิ้น ใช้แบ่งยอดชุดโปร (กรอกที่หน้าสต็อก)<br>ชี้ที่ช่องเพื่อดูว่าแบ่งยอดแบบไหนกี่ชิ้น')}</th></tr></thead><tbody>
       ${L.map(([k, x], i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l">${names[k] && names[k] !== k ? `<span class="pn ui-trunc">${esc(names[k])}</span><small class="ui-code">${esc(k)}</small>` : `<span class="pn ui-code">${esc(k)}</span><small>ยังไม่มีชื่อ</small>`}</td><td class="num">${fmt(x.pcs)}</td><td class="num">${fmt2(x.amt)}</td><td class="num">${fmt2(x.pcs ? x.amt / x.pcs : 0)}</td><td class="num"><span class="has-tip" data-tip="${esc(wayTip(x))}">${rsp[k] ? fmt2(rsp[k]) : '—'}</span>${x.avg ? '<i class="m-dot" aria-hidden="true"></i>' : ''}</td></tr>`).join('')}
-      </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(L.length)} รายการ</td><td class="num">${fmt(A.pcs)}</td><td class="num">${fmt2(A.amt)}</td><td></td><td></td></tr></tfoot></table></div></section>
-    <section class="panel" id="itOrders"><div class="panel-h"><h2>รายการออเดอร์ ${tip('แต่ละออเดอร์แตกเป็นสินค้าจริง<br>ยอดของแต่ละบรรทัด (SKU) แบ่งให้สินค้าในชุด เศษสตางค์ไปรวมที่สินค้าตัวสุดท้าย รวมกลับเท่ายอดบรรทัดเสมอ')}</h2>
-      <span style="flex:1"></span><div class="form-row"><input type="search" id="itQ" placeholder="ค้นหาหมายเลขคำสั่งซื้อ" value="${esc(IT.q)}" style="width:230px"><button type="button" class="btn" id="itGo">ค้นหา</button></div></div><div id="itBody"><div class="ui-skel sk-box"></div></div></section>`;
+      </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(L.length)} รายการ</td><td class="num">${fmt(A.pcs)}</td><td class="num">${fmt2(A.amt)}</td><td></td><td></td></tr></tfoot></table>`;
+    return BL.length ? `<table class="ui-table tbl prod" data-no-sort data-no-page><thead><tr><th class="num">#</th><th class="l">ตะกร้า</th><th class="num">ออเดอร์ ${tip('ออเดอร์ที่ส่งสำเร็จ')}</th><th class="num">ยอดขาย ${tip(SALE_INFO)}</th><th class="num">ได้รับจริง ${tip(RECV_INFO + '<br>ชี้ที่ตัวเลขเพื่อดูค่าธรรมเนียม / ค่าคอม / คืนเงิน')}</th><th class="num">รอโอน ${tip('ยอดขายที่ส่งสำเร็จแล้ว แต่ TikTok ยังไม่โอน')}</th></tr></thead><tbody>
+      ${BL.map(([n, x], i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l"><span class="pn ui-trunc">${esc(n)}</span></td><td class="num">${fmt(x.orders)}</td><td class="num">${fmt2(x.sales)}</td><td class="num"><b class="has-tip" data-tip="${esc(moneyTip(x))}">${fmt2(x.received)}</b></td><td class="num">${x.sales_pending ? fmt2(x.sales_pending) : dash}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(BL.length)} ตะกร้า</td><td class="num"><span class="has-tip" data-tip="ออเดอร์ที่มีหลายตะกร้า นับครั้งเดียวในแถวรวม จึงอาจน้อยกว่าผลบวกของแต่ละแถว">${fmt(M.orders)}</span></td><td class="num">${fmt2(M.sales)}</td><td class="num"><span class="has-tip" data-tip="${esc(moneyTip(M))}">${fmt2(M.received)}</span></td><td class="num">${M.sales_pending ? fmt2(M.sales_pending) : dash}</td></tr></tfoot></table>` : '<div class="empty-note">ยังไม่มีข้อมูลในช่วงนี้</div>';
+  };
+  const drawSum = () => { document.getElementById('itSumBody').innerHTML = sumBody(); document.querySelectorAll('#itTabs button').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === IT.tab)); pinSoon(); };
+  document.querySelectorAll('#itTabs button').forEach(b => b.onclick = () => { IT.tab = b.dataset.t; drawSum(); }); drawSum();
   const go = () => { IT.q = document.getElementById('itQ').value.trim(); IT.page = 0; drawOrders(names); };
   document.getElementById('itGo').onclick = go; document.getElementById('itQ').onkeydown = e => { if (e.key === 'Enter') go(); };
-  document.getElementById('itDl').onclick = e => exportItems(e.currentTarget, names, rsp, L, A, rev);
+  document.getElementById('itDl').onclick = e => exportItems(e.currentTarget, names, rsp, L, A, rev, BL, M);
   drawOrders(names);
 }
 async function drawOrders(names) {
@@ -364,38 +381,56 @@ async function drawOrders(names) {
   if (stale(tok)) return;
   if (error) return box.innerHTML = `<div class="empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(error.message)}</div>`;
   if (!O.length) return box.innerHTML = `<div class="empty-note">${IT.q ? 'ไม่พบหมายเลขคำสั่งซื้อนี้ในช่วงวันที่ที่เลือก' : 'ไม่มีออเดอร์ในช่วงนี้'}</div>`;
-  const R = await DB.select('v_order_items', '*', x => x.in('order_id', O.map(o => o.order_id)).order('sku_id').order('line_no').order('k'));
+  const ids = O.map(o => o.order_id);
+  const [R, MO] = await Promise.all([DB.select('v_order_items', '*', x => x.in('order_id', ids).order('sku_id').order('line_no').order('k')), DB.select('v_order_money', '*', x => x.in('order_id', ids)).catch(() => [])]);
   if (stale(tok)) return;
-  const pages = Math.ceil(count / IT_PER);
-  const ST_CLS = { 'ส่งสำเร็จ': 'good', 'คืนสินค้า': 'warn' }, MTIP = { 'ไม่ต้องแบ่ง': 'SKU ชิ้นเดียว ไม่ต้องแบ่งยอด', 'ตาม RSP': 'ชุดโปร: แบ่งยอดตามสัดส่วน RSP', 'หารเฉลี่ย': 'ชุดโปร: หารเฉลี่ยเท่ากันทุกชิ้น (ยังไม่มี RSP ครบในชุด)' };
-  box.innerHTML = `<div class="wide"><table class="ui-table tbl it-tbl" data-no-sort data-no-page><thead><tr><th class="l">คำสั่งซื้อ</th><th class="l">วันที่สั่ง</th><th class="l">Creator</th><th class="l">SKU</th><th class="num">ชุด</th><th class="num">ยอด SKU</th><th class="l">สินค้าจริง</th><th class="num">ชิ้น</th><th class="num">ราคาต่อชิ้น</th><th class="num">ยอดหลังแบ่ง ${tip('ยอดของ SKU ที่แบ่งให้สินค้าแต่ละตัว รวมกันเท่ายอด SKU<br>ชี้ที่ตัวเลขเพื่อดูวิธีแบ่ง · จุดสีส้ม = หารเฉลี่ยเพราะยังไม่มี RSP')}</th></tr></thead><tbody>
+  const money = Object.fromEntries(MO.map(m => [m.order_id, m])), pages = Math.ceil(count / IT_PER);
+  const MTIP = { 'ไม่ต้องแบ่ง': 'SKU ชิ้นเดียว ไม่ต้องแบ่งยอด', 'ตาม RSP': 'ชุดโปร: แบ่งยอดตามสัดส่วน RSP', 'หารเฉลี่ย': 'ชุดโปร: หารเฉลี่ยเท่ากันทุกชิ้น (ยังไม่มี RSP ครบในชุด)' };
+  const recvCell = (o, n) => { const m = money[o.order_id]; if (!m) return `<td class="num" rowspan="${n}"><span class="ui-badge">รอโอน</span></td>`;
+    return `<td class="num" rowspan="${n}"><b class="has-tip" data-tip="${esc(`${moneyLines(m)}\n\nยอดขาย ${fmt2(o.revenue)}\nเงินเข้าล่าสุด ${dLong(String(m.last_settled).slice(0, 10))}`)}">${fmt2(m.received)}</b></td>`; };
+  box.innerHTML = `<div class="wide"><table class="ui-table tbl it-tbl" data-no-sort data-no-page><thead><tr><th class="l">คำสั่งซื้อ</th><th class="l">วันที่สั่ง</th><th class="l">Creator</th><th class="num">ได้รับจริง ${tip('เงินทั้งออเดอร์ที่ TikTok โอนเข้าจริง หักค่าธรรมเนียม / ค่าคอม Creator / คืนเงินแล้ว<br>ชี้ที่ตัวเลขเพื่อดูรายละเอียด · รอโอน = ยังไม่มีในรายงานรับเงิน')}</th><th class="l">SKU</th><th class="num">ชุด</th><th class="num">ยอด SKU</th><th class="l">สินค้าจริง</th><th class="num">ชิ้น</th><th class="num">ราคาต่อชิ้น</th><th class="num">ยอดหลังแบ่ง ${tip('ยอดของ SKU ที่แบ่งให้สินค้าแต่ละตัว รวมกันเท่ายอด SKU<br>ชี้ที่ตัวเลขเพื่อดูวิธีแบ่ง · จุดสีส้ม = หารเฉลี่ยเพราะยังไม่มี RSP')}</th></tr></thead><tbody>
     ${O.map((o, oi) => { const items = R.filter(r => r.order_id === o.order_id), lines = [...new Set(items.map(r => r.sku_id + '|' + r.line_no))], n = items.length, cls = oi % 2 ? ' o-alt' : '';
-      const head = `<td class="l" rowspan="${n}"><span class="ui-code">${esc(o.order_id)}</span></td><td class="l" rowspan="${n}">${dTh(o.d)}</td><td class="l" rowspan="${n}">${o.creator ? esc(o.creator) : dash}</td>`;
+      const head = `<td class="l" rowspan="${n}"><span class="ui-code">${esc(o.order_id)}</span></td><td class="l" rowspan="${n}">${dTh(o.d)}</td><td class="l" rowspan="${n}">${o.creator ? esc(o.creator) : dash}</td>${recvCell(o, n)}`;
       let first = true;
       return lines.map(key => { const g = items.filter(r => r.sku_id + '|' + r.line_no === key);
         return g.map((r, j) => { const tr = `<tr class="${first ? 'o-start' : ''}${cls}">${first ? head : ''}${j ? '' : `<td class="l" rowspan="${g.length}"><span class="ui-code">${esc(r.sku)}</span></td><td class="num" rowspan="${g.length}">${fmt(r.sets)}</td><td class="num" rowspan="${g.length}">${fmt2(r.line_amount)}</td>`}<td class="l"><span class="pn ui-trunc">${esc(names[r.item] || r.item)}</span><small class="ui-code">${esc(r.item)}</small></td><td class="num">${fmt(r.pcs)}</td><td class="num">${fmt2(r.amount / r.pcs)}</td><td class="num"><b class="has-tip" data-tip="${esc(MTIP[r.method] || r.method)}">${fmt2(r.amount)}</b>${r.method === 'หารเฉลี่ย' ? '<i class="m-dot" aria-hidden="true"></i>' : ''}</td></tr>`; first = false; return tr; }).join(''); }).join(''); }).join('')}
     </tbody></table></div>
     <div class="ui-pager"><span>ออเดอร์ ${fmt(IT.page * IT_PER + 1)}–${fmt(Math.min(count, IT.page * IT_PER + IT_PER))} จาก ${fmt(count)}</span><div class="ui-pager-btns"><button type="button" data-p="-1"${IT.page ? '' : ' disabled'}>‹ ก่อนหน้า</button><button type="button" aria-current="page">${fmt(IT.page + 1)} / ${fmt(pages)}</button><button type="button" data-p="1"${IT.page + 1 < pages ? '' : ' disabled'}>ถัดไป ›</button></div></div>`;
   box.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { IT.page += +b.dataset.p; drawOrders(names); document.getElementById('itOrders').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  pinSoon();
 }
-// ดาวน์โหลด Excel: ชีตรายละเอียด (1 แถว = สินค้าจริง 1 ตัวในบรรทัด) + ชีตสรุปรายสินค้า + แถวตรวจรวมกลับ
-async function exportItems(btn, names, rsp, L, A, rev) {
+// รายการเงินที่บวกลบแล้วเท่ากับ "ได้รับจริง" พอดี (ตามรายงานรับเงิน)
+function moneyLines(x) {
+  const adj = +x.received - +x.subtotal - +x.refund - +x.fees, sg = v => (v < 0 ? '− ' : '+ ') + fmt2(Math.abs(v));
+  return [`ค่าสินค้า ${fmt2(x.subtotal)}`, `(หลังส่วนลดร้าน รวมส่วนลดที่ TikTok ออกให้)`, +x.refund ? `คืนเงินลูกค้า ${sg(+x.refund)}` : '', `ค่าธรรมเนียมทั้งหมด ${sg(+x.fees)}`, `(ในนี้ค่าคอม Creator ${fmt2(Math.abs(+x.commission))})`,
+    Math.abs(adj) >= 0.005 ? `เงินชดเชย / ปรับยอด ${sg(adj)}` : '', `= ได้รับจริง ${fmt2(x.received)}`].filter(Boolean).join('\n');
+}
+// ดาวน์โหลด Excel: ชีตรายละเอียด (1 แถว = สินค้าจริง 1 ตัว + เงินได้รับจริงราย SKU) + สรุปรายตะกร้า + สรุปรายสินค้า + แถวตรวจรวมกลับ
+async function exportItems(btn, names, rsp, L, A, rev, BL, M) {
   const label = btn.innerHTML; btn.disabled = true; btn.textContent = 'กำลังเตรียมไฟล์…';
   try {
-    const R = await DB.select('v_order_items', '*', q => inRange(q).order('d').order('order_id').order('sku_id').order('line_no').order('k'));
+    const [R, LM] = await Promise.all([DB.select('v_order_items', '*', q => inRange(q).order('d').order('order_id').order('sku_id').order('line_no').order('k')),
+      DB.select('v_line_money', 'order_id, sku_id, line_no, received, settled, last_settled', q => inRange(q).eq('is_sale', true)).catch(() => [])]);
+    const lm = Object.fromEntries(LM.map(r => [r.order_id + '|' + r.sku_id + '|' + r.line_no, r]));
     const r2 = v => Math.round(v * 100) / 100;
-    const detail = R.map(r => ({ 'วันที่สั่ง': r.d, 'หมายเลขคำสั่งซื้อ': r.order_id, 'สถานะ': r.state, 'Creator': r.creator || '', 'SKU': r.sku, 'จำนวนชุด': +r.sets,
-      'ยอด SKU (หลังส่วนลด)': +r.k === 1 ? +r.line_amount : null, 'รหัสสินค้าจริง': r.item, 'ชื่อสินค้า': names[r.item] || r.item, 'จำนวนชิ้น': +r.pcs,
-      'ราคาต่อชิ้น': r2(r.amount / r.pcs), 'ยอดหลังแบ่ง': +r.amount, 'วิธีแบ่ง': r.method }));
-    const sum = detail.reduce((a, r) => a + r['ยอดหลังแบ่ง'], 0);
-    detail.push({}, { 'หมายเลขคำสั่งซื้อ': 'รวม', 'ยอด SKU (หลังส่วนลด)': r2(detail.reduce((a, r) => a + (r['ยอด SKU (หลังส่วนลด)'] || 0), 0)), 'จำนวนชิ้น': detail.reduce((a, r) => a + (r['จำนวนชิ้น'] || 0), 0), 'ยอดหลังแบ่ง': r2(sum) });
+    const detail = R.map(r => { const m = +r.k === 1 ? lm[r.order_id + '|' + r.sku_id + '|' + r.line_no] : null;
+      return { 'วันที่สั่ง': r.d, 'หมายเลขคำสั่งซื้อ': r.order_id, 'สถานะ': r.state, 'Creator': r.creator || '', 'SKU': r.sku, 'จำนวนชุด': +r.sets,
+        'ยอด SKU (หลังส่วนลด)': +r.k === 1 ? +r.line_amount : null, 'ได้รับจริง (SKU)': m && m.settled ? +m.received : null, 'วันที่เงินเข้า': m && m.settled ? String(m.last_settled).slice(0, 10) : (+r.k === 1 ? 'รอโอน' : ''),
+        'รหัสสินค้าจริง': r.item, 'ชื่อสินค้า': names[r.item] || r.item, 'จำนวนชิ้น': +r.pcs, 'ราคาต่อชิ้น': r2(r.amount / r.pcs), 'ยอดหลังแบ่ง': +r.amount, 'วิธีแบ่ง': r.method }; });
+    const S = k => r2(detail.reduce((a, r) => a + (r[k] || 0), 0));
+    detail.push({}, { 'หมายเลขคำสั่งซื้อ': 'รวม', 'ยอด SKU (หลังส่วนลด)': S('ยอด SKU (หลังส่วนลด)'), 'ได้รับจริง (SKU)': S('ได้รับจริง (SKU)'), 'จำนวนชิ้น': S('จำนวนชิ้น'), 'ยอดหลังแบ่ง': S('ยอดหลังแบ่ง') });
+    const baskets = BL.map(([n, x]) => ({ 'ตะกร้า': n, 'ออเดอร์': x.orders, 'ยอดขาย': r2(x.sales), 'ยอดขายที่โอนแล้ว': r2(x.sales_settled), 'ได้รับจริง': r2(x.received),
+      'ค่าสินค้า (รายงานรับเงิน)': r2(x.subtotal), 'คืนเงินลูกค้า': r2(x.refund), 'ค่าธรรมเนียมทั้งหมด': r2(x.fees), 'ในนี้ค่าคอม Creator': r2(x.commission), 'เงินชดเชย / ปรับยอด': r2(x.received - x.subtotal - x.refund - x.fees), 'รอโอน': r2(x.sales_pending) }));
+    baskets.push({}, { 'ตะกร้า': 'รวม', 'ออเดอร์': M.orders, 'ยอดขาย': r2(M.sales), 'ยอดขายที่โอนแล้ว': r2(M.sales_settled), 'ได้รับจริง': r2(M.received), 'ค่าสินค้า (รายงานรับเงิน)': r2(M.subtotal), 'คืนเงินลูกค้า': r2(M.refund), 'ค่าธรรมเนียมทั้งหมด': r2(M.fees), 'ในนี้ค่าคอม Creator': r2(M.commission), 'เงินชดเชย / ปรับยอด': r2(M.received - M.subtotal - M.refund - M.fees), 'รอโอน': r2(M.sales_pending) },
+      { 'ตะกร้า': 'หมายเหตุ: ได้รับจริงรวมออเดอร์คืนสินค้า / ตีกลับที่มีเงินเข้า-ออกด้วย จึงอาจมากกว่าผลรวม "ได้รับจริง (SKU)" ในชีตรายละเอียดซึ่งมีเฉพาะออเดอร์ส่งสำเร็จ' });
     const summary = L.map(([k, x]) => ({ 'รหัสสินค้าจริง': k, 'ชื่อสินค้า': names[k] || k, 'ชิ้น': x.pcs, 'ยอดหลังแบ่ง': r2(x.amt), 'ราคาเฉลี่ยต่อชิ้น': r2(x.pcs ? x.amt / x.pcs : 0), 'RSP': rsp[k] || null, 'ชิ้นที่แบ่งตาม RSP': x.byRsp, 'ชิ้นที่หารเฉลี่ย': x.avg }));
     summary.push({}, { 'ชื่อสินค้า': 'รวมรายชิ้น', 'ชิ้น': A.pcs, 'ยอดหลังแบ่ง': r2(A.amt) }, { 'ชื่อสินค้า': 'ยอดขาย (ตรวจสอบ)', 'ยอดหลังแบ่ง': r2(rev) });
-    const wb = XLSX.utils.book_new(), money = ['ยอด SKU (หลังส่วนลด)', 'ราคาต่อชิ้น', 'ยอดหลังแบ่ง', 'ราคาเฉลี่ยต่อชิ้น', 'RSP'];
-    [['รายละเอียด', detail], ['สรุปรายสินค้า', summary]].forEach(([n, rows]) => {
+    const wb = XLSX.utils.book_new(), money = ['ยอด SKU (หลังส่วนลด)', 'ได้รับจริง (SKU)', 'ราคาต่อชิ้น', 'ยอดหลังแบ่ง', 'ราคาเฉลี่ยต่อชิ้น', 'RSP', 'ยอดขาย', 'ยอดขายที่โอนแล้ว', 'ได้รับจริง', 'ค่าสินค้า (รายงานรับเงิน)', 'ค่าธรรมเนียมทั้งหมด', 'ในนี้ค่าคอม Creator', 'คืนเงินลูกค้า', 'เงินชดเชย / ปรับยอด', 'รอโอน'];
+    [['รายละเอียด', detail], ['สรุปรายตะกร้า', baskets], ['สรุปรายสินค้า', summary]].forEach(([n, rows]) => {
+      if (!rows.length) return;
       const ws = XLSX.utils.json_to_sheet(rows), head = Object.keys(rows[0]), rng = XLSX.utils.decode_range(ws['!ref']);
       head.forEach((h, c) => { if (!money.includes(h)) return; for (let r = 1; r <= rng.e.r; r++) { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell && cell.t === 'n') cell.z = '#,##0.00'; } });
-      ws['!cols'] = head.map(h => ({ wch: Math.max(10, h.length + 4, h === 'ชื่อสินค้า' ? 40 : 0, h === 'หมายเลขคำสั่งซื้อ' ? 22 : 0) }));
+      ws['!cols'] = head.map(h => ({ wch: Math.max(10, h.length + 4, h === 'ชื่อสินค้า' || h === 'ตะกร้า' ? 40 : 0, h === 'หมายเลขคำสั่งซื้อ' ? 22 : 0) }));
       XLSX.utils.book_append_sheet(wb, ws, n);
     });
     XLSX.writeFile(wb, `รายละเอียดออเดอร์_${RANGE.from}_${RANGE.to}.xlsx`);
@@ -435,7 +470,7 @@ async function pageStock(el) {
     const bad = rowsOut.find(r => (r.opening_stock == null) !== (r.opening_date == null));
     if (bad) { await uiAlert('กรอกสต็อกตั้งต้นและวันที่นับคู่กัน', { text: `สินค้า ${bad.sku}: ต้องมีทั้งจำนวนตั้งต้นและวันที่นับ หรือเว้นว่างทั้งคู่`, tone: 'bad' }); return; }
     btn.disabled = true; btn.textContent = 'กำลังบันทึก…';
-    try { await DB.upsert('products', rowsOut, 'sku'); clearCache(); route(); } catch (x) { btn.disabled = false; btn.textContent = 'บันทึก'; uiAlert('บันทึกไม่สำเร็จ', { text: x.message, tone: 'bad' }); }
+    try { await DB.upsert('products', rowsOut, 'sku'); await DB.rpc('refresh_sales').catch(() => {}); clearCache(); route(); } catch (x) { btn.disabled = false; btn.textContent = 'บันทึก'; uiAlert('บันทึกไม่สำเร็จ', { text: x.message, tone: 'bad' }); }
   };
   document.getElementById('siSave').onclick = async () => {
     const sku = siSku.value, qty = +siQty.value, msg = document.getElementById('siMsg');
@@ -451,7 +486,7 @@ async function pageMoney(el) {
   if (stale(tok)) return;
   const S = k => rows.reduce((a, r) => a + (+r[k] || 0), 0), feePct = S('revenue') ? Math.abs(S('fees')) / S('revenue') * 100 : 0;
   const neg = v => `<span class="ui-muted">${fmt(v)}</span>`;
-  el.innerHTML = `<section class="ui-metrics hero money-hero">${metric('รายได้', fmt(S('revenue')), 'ยอดขาย + ค่าส่งที่ลูกค้าจ่าย ฯลฯ', 'รายได้ทั้งหมดตามรายงานรับเงิน (ก่อนหักค่าธรรมเนียม)')}
+  el.innerHTML = `<section class="ui-metrics hero money-hero">${metric('รายได้', fmt(S('revenue')), 'ค่าสินค้า หักคืนเงินลูกค้าแล้ว', 'รายได้ทั้งหมดตามรายงานรับเงิน (ก่อนหักค่าธรรมเนียม)<br>= ค่าสินค้าหลังส่วนลดร้าน (รวมส่วนลดที่ TikTok ออกให้) − คืนเงินลูกค้า')}
       ${metric('− ค่าธรรมเนียมทั้งหมด', fmt(Math.abs(S('fees'))), `${feePct.toFixed(1)}% ของรายได้ · ในนี้ค่าคอม Creator ${fmt(Math.abs(S('affiliate_commission')))}`, 'ค่าธรรมเนียมทุกอย่างที่ TikTok หัก<br>รวมค่าคอมมิชชั่น TikTok / ค่าคอม Creator / ค่าธรรมเนียมคำสั่งซื้อ / ค่าส่งสุทธิ ฯลฯ<br>ค่าคอม Creator <b>อยู่ในก้อนนี้แล้ว</b> ไม่ต้องหักซ้ำ')}
       ${metric('+ ปรับยอด / ชดเชย', fmt(S('adj')), 'เงินชดเชย / รายการปรับยอดจาก TikTok', 'เงินเข้า − รายได้ + ค่าธรรมเนียม (เช่น เงินชดเชยด้านโลจิสติกส์)')}
       ${metric('= เงินเข้า', fmt(S('amount')), `${fmt(S('orders'))} ออเดอร์`, 'ยอดที่ TikTok โอนเข้าจริง หักค่าธรรมเนียมและค่าคอม Creator แล้ว · นับตามวันที่เงินเข้า')}</section>
@@ -469,18 +504,60 @@ async function route(quiet) {
   if (!quiet) closeCreator(); const keepY = quiet ? scrollY : 0; pageActs().innerHTML = '';
   const id = (location.hash || '#overview').slice(1), pg = PAGES.find(p => p[0] === id) || PAGES[0];
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.p === pg[0]));
-  document.getElementById('pageTitle').textContent = pg[1];
+  document.getElementById('pageTitle').textContent = pg[1]; document.getElementById('pageSub').textContent = PAGE_SUB[pg[0]] || '';
   document.getElementById('range').style.visibility = ['stock', 'upload'].includes(pg[0]) ? 'hidden' : 'visible';
   const el = document.getElementById('content'); if (!quiet) el.innerHTML = pg[0] === 'upload' ? '' : SKEL;
   try { await ({ overview: pageOverview, creators: pageCreators, products: pageProducts, items: pageItems, stock: pageStock, money: pageMoney, upload: pageUpload })[pg[0]](el); if (stale(tok)) return; limitRows(el); if (window.UI && UI.fit) UI.fit(); if (quiet) scrollTo(0, keepY); pinSoon();
     if (PREFETCHED !== RANGE.from + RANGE.to) { PREFETCHED = RANGE.from + RANGE.to; prefetch(); } }
   catch (e) { if (!stale(tok)) el.innerHTML = `<div class="panel empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`; }
 }
-document.getElementById('appName').textContent = (window.APP && APP.NAME) || 'ระบบวิเคราะห์ยอดขาย'; document.title = document.getElementById('appName').textContent;
-document.querySelector('.sb-logo').innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg>';   // โลโก้กลาง ไม่ผูกกับช่องทางใด
+// ===== เมนูซ้าย + แถบบน แบบ Deesay: โลโก้ + ชื่อรอง + ปุ่มย่อเมนู · การ์ดสถานะข้อมูลท้ายเมนู · ปุ่ม Updated ข้างชื่อหน้า =====
+const PAGE_SUB = { overview: 'ยอดขาย = ออเดอร์ที่ส่งสำเร็จ · นับตามวันที่สั่งซื้อ', creators: 'ยอดขายผ่าน Creator · ส่งสำเร็จ · กดชื่อเพื่อดูรายละเอียด', products: 'ของที่ออกจากคลัง · นับตามวันที่ส่ง',
+  items: 'ยอดแยกรายสินค้า + เงินที่ได้รับจริง · สำหรับบัญชี', stock: 'คงเหลือ = ตั้งต้น + รับเข้า − ส่งออก · ราคา RSP', money: 'ตามรายงานรับเงิน · นับตามวันที่เงินเข้า', upload: 'ไฟล์คำสั่งซื้อ + รายงานรับเงิน จาก TikTok Seller Center' };
+const APP_NAME = (window.APP && APP.NAME) || 'ระบบวิเคราะห์ยอดขาย', APP_SUB = (window.APP && APP.SUBTITLE) || 'Sales & Marketing';
+document.title = APP_NAME;
+document.querySelector('.sb-brand').innerHTML = `<span class="sb-logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg></span>
+  <span class="sb-name"><b id="appName">${esc(APP_NAME)}</b><small>${esc(APP_SUB)}</small></span>
+  <button type="button" class="sb-mini-btn" id="sbMini" aria-label="ย่อ / ขยายเมนู" data-tip="ย่อ / ขยายเมนู"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11 17-5-5 5-5M18 17l-5-5 5-5"/></svg></button>`;
 const NAV_ICON = { overview: 'M4 13h6V4H4zM14 20h6v-9h-6zM14 4h6v4h-6zM4 20h6v-3H4z', creators: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0', products: 'M3 7h11v9H3zM14 10h4l3 3v3h-7M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   items: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3', stock: 'M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8', money: 'M3 7h18v12H3zM3 11h18M7 15h3', upload: 'M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3' };
-document.getElementById('nav').innerHTML = PAGES.map(([id, n]) => `<a href="#${id}" data-p="${id}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${NAV_ICON[id] || ''}"/></svg><span>${n}</span></a>`).join('');
+document.getElementById('nav').innerHTML = PAGES.map(([id, n]) => `<a href="#${id}" data-p="${id}" aria-label="${n}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${NAV_ICON[id] || ''}"/></svg><span>${n}</span></a>`).join('');
+// ท้ายเมนู: การ์ดสถานะข้อมูล + ปุ่มโหมด / ออก (ไอคอน)
+const foot = document.querySelector('.sb-foot');
+foot.insertAdjacentHTML('beforebegin', '<div class="sb-status" id="sbStatus"><i></i><div><b>กำลังตรวจข้อมูล…</b><small>&nbsp;</small></div></div>');
+foot.innerHTML = `<button type="button" class="sb-btn" id="btnTheme" data-tip="สลับโหมดสว่าง / มืด"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg><span>โหมด</span></button>
+  <button type="button" class="sb-btn" id="btnOut" data-tip="ออกจากระบบ"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg><span>ออก</span></button>`;
+document.getElementById('btnTheme').onclick = toggleTheme;
 if (!(window.APP && APP.SHARED_LOGIN_EMAIL)) document.getElementById('btnOut').style.display = 'none';
 else document.getElementById('btnOut').onclick = async () => { await IDB.clear(); DB.signOut(); };   // ออกจากระบบ = ล้างข้อมูลที่จำไว้ในเครื่องด้วย
-initRange(); window.addEventListener('hashchange', route); DB.ready.then(route);
+// ย่อเมนูเหลือไอคอน (จำไว้ในเครื่อง)
+const setMini = on => { document.body.classList.toggle('sb-mini', on); document.querySelectorAll('#nav a').forEach(a => on ? a.dataset.tip = a.getAttribute('aria-label') : delete a.dataset.tip);   // ย่อแล้วชี้ไอคอนเห็นชื่อเมนู
+  try { localStorage.setItem('sbMini', on ? '1' : ''); } catch (e) {} pinSoon(); Object.values(CHARTS).forEach(c => c && c.resize && setTimeout(() => c.resize(), 220)); };
+try { if (localStorage.getItem('sbMini')) setMini(true); } catch (e) {}
+document.getElementById('sbMini').onclick = () => setMini(!document.body.classList.contains('sb-mini'));
+// แถบบน: ปุ่มสถานะ "Updated HH:MM" ข้างชื่อหน้า
+document.getElementById('pageSub').insertAdjacentHTML('afterend', '<span class="pg-note" id="pageNote" hidden></span>');
+
+// สถานะข้อมูล: อ่านจากประวัติการอัปโหลด → ข้อมูลถึงวันไหน / อัปโหลดล่าสุดเมื่อไร
+let FRESH = null;
+const dShortY = s => { const d = pDate(String(s).slice(0, 10)); return `${d.getDate()} ${TH_M[d.getMonth()]} ${String(d.getFullYear() + 543).slice(2)}`; };
+async function loadFreshness(force) {
+  if (FRESH && !force) return drawFreshness();
+  const U = await DB.select('uploads', 'kind, date_to, uploaded_at', q => q.order('uploaded_at', { ascending: false }).limit(500)).catch(() => null);
+  if (!U) return;
+  const maxTo = k => U.filter(u => u.kind === k && u.date_to).map(u => String(u.date_to).slice(0, 10)).sort().pop() || null;
+  FRESH = { last: U[0] ? U[0].uploaded_at : null, orders: maxTo('orders'), income: maxTo('settlement') }; drawFreshness();
+}
+function drawFreshness() {
+  if (!FRESH) return;
+  const box = document.getElementById('sbStatus'), note = document.getElementById('pageNote');
+  if (!FRESH.last) { box.className = 'sb-status off'; box.innerHTML = '<i></i><div><b>ยังไม่มีข้อมูล</b><small>อัปโหลดไฟล์ที่เมนูอัปโหลด</small></div>'; note.hidden = true; return; }
+  const last = new Date(FRESH.last), today = ymd(new Date()), lastDay = ymd(last), hm = last.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' });
+  const age = Math.round((pDate(today) - pDate(lastDay)) / 864e5), fresh = age <= 2;
+  const info = `อัปโหลดล่าสุด ${dLong(lastDay)} ${hm}\nคำสั่งซื้อถึง ${FRESH.orders ? dLong(FRESH.orders) : '—'}\nรายงานรับเงินถึง ${FRESH.income ? dLong(FRESH.income) : '—'}`;
+  box.className = 'sb-status' + (fresh ? '' : ' old'); box.dataset.tip = info;
+  box.innerHTML = `<i></i><div><b>${fresh ? 'ข้อมูลอัปเดตแล้ว' : `อัปโหลดล่าสุด ${age} วันก่อน`}</b><small>คำสั่งซื้อถึง ${FRESH.orders ? dShortY(FRESH.orders) : '—'}</small></div>`;
+  note.hidden = false; note.className = 'pg-note' + (fresh ? '' : ' old'); note.dataset.tip = info;
+  note.innerHTML = `<i></i>Updated ${lastDay === today ? hm : dTh(lastDay) + ' ' + hm}`;
+}
+initRange(); window.addEventListener('hashchange', () => route()); DB.ready.then(() => { route(); loadFreshness(); });
