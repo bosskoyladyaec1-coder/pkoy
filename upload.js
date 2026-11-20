@@ -110,8 +110,15 @@ async function pageUpload(el) {
   const go = async files => {
     if (!files.length) return; list.innerHTML = '';
     const items = [...files].map(() => list.appendChild(Object.assign(document.createElement('div'), { className: 'up-item' })));
-    for (let i = 0; i < files.length; i++) await uploadOne(files[i], items[i]);   // ทีละไฟล์ตามลำดับ
-    input.value = ''; if (window.clearCache) clearCache(); renderUploadLog();
+    let saved = false;
+    for (let i = 0; i < files.length; i++) saved = (await uploadOne(files[i], items[i])) || saved;   // ทีละไฟล์ตามลำดับ
+    if (saved) {   // อัปเดตตารางสรุปทุกหน้าครั้งเดียวหลังอัปครบทุกไฟล์ (SQL 10: refresh_sales)
+      const r = list.appendChild(Object.assign(document.createElement('div'), { className: 'up-item' }));
+      r.innerHTML = '<b>อัปเดตตัวเลขทุกหน้า</b><span class="msg">กำลังคำนวณ…</span>';
+      try { await DB.rpc('refresh_sales'); r.className = 'up-item ok'; r.querySelector('.msg').textContent = '✓ อัปเดตแล้ว'; }
+      catch (e) { r.className = 'up-item warn'; r.querySelector('.msg').textContent = 'อัปเดตตัวเลขไม่สำเร็จ: ' + e.message + ' — แจ้งผู้ดูแลระบบ'; }
+    }
+    input.value = ''; if (window.clearCache) clearCache(); renderUploadLog(); if (window.loadFreshness) loadFreshness(true);
   };
   input.onchange = () => go(input.files);
   ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('is-over'); }));
