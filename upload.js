@@ -36,6 +36,13 @@ function toIso(v) {
   if ((m = s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/))) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}T${(m[4] || '0').padStart(2, '0')}:${m[5] || '00'}:${m[6] || '00'}+07:00`;
   return null;
 }
+// กันไว้อีกชั้น: ถ้าชีตไม่มีขนาดตาราง หรือขนาดที่บอกเล็กกว่าข้อมูลจริง → คำนวณใหม่จากช่องที่มีข้อมูล
+function fixRange(ws) {
+  if (!ws) return; let r2 = -1, c2 = -1;
+  for (const k in ws) { if (k.charCodeAt(0) === 33) continue; const a = XLSX.utils.decode_cell(k); if (a.r > r2) r2 = a.r; if (a.c > c2) c2 = a.c; }
+  if (r2 < 0) return; const cur = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : null;
+  if (!cur || cur.e.r < r2 || cur.e.c < c2) ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r2, c: c2 } });
+}
 // ดูทุกชีตในไฟล์ หาแถวหัวคอลัมน์ที่ตรงกับไฟล์แบบไหนมากที่สุด (นับจำนวนคอลัมน์ที่รู้จัก)
 function detect(wb) {
   let best = null;
@@ -49,7 +56,9 @@ function detect(wb) {
   return best;
 }
 async function parseFile(file) {
-  let wb; try { wb = XLSX.read(await file.arrayBuffer(), { cellDates: false }); } catch (e) { throw new Error('เปิดไฟล์ไม่ได้ — ใช้ไฟล์ .xlsx หรือ .csv ที่ export จาก Seller Center'); }
+  // nodim: ไม่เชื่อขนาดตารางที่ไฟล์ประกาศไว้ — ไฟล์ที่โหลดจาก TikTok ตรง ๆ (ชื่อมี "(UTC+7)") บอกว่ามีแค่ A1:X2 ทั้งที่มีเป็นหมื่นแถว ทำให้อ่านได้แถวเดียว
+  let wb; try { wb = XLSX.read(await file.arrayBuffer(), { cellDates: false, nodim: true }); } catch (e) { throw new Error('เปิดไฟล์ไม่ได้ — ใช้ไฟล์ .xlsx หรือ .csv ที่ export จาก Seller Center'); }
+  wb.SheetNames.forEach(n => fixRange(wb.Sheets[n]));
   const { kind, aoa, hi } = detect(wb), K = KINDS[kind];
   const head = aoa[hi].map(h => String(h).trim()), col = {};
   Object.entries(K.alias).forEach(([f, names]) => { const i = head.findIndex(h => names.some(n => n.toLowerCase() === h.toLowerCase())); if (i >= 0) col[f] = i; });
@@ -96,7 +105,7 @@ async function pageUpload(el) {
       <b>ลากไฟล์มาวาง หรือกดเพื่อเลือกไฟล์</b><span>ไฟล์คำสั่งซื้อ หรือ รายงานรับเงิน · ระบบดูให้เองว่าเป็นไฟล์แบบไหน · เลือกหลายไฟล์พร้อมกันได้</span></label>
     <div class="up-list" id="upList"></div></section>
     <section class="panel"><div class="panel-h"><h2>ประวัติการอัปโหลด</h2></div><div class="wide"><table class="ui-table tbl" data-no-page><thead><tr><th class="l">เวลา</th><th class="l">ประเภท</th><th class="l">ไฟล์</th><th class="num">แถว</th><th class="l">ช่วงวันที่ในไฟล์</th></tr></thead><tbody id="upLog"></tbody></table></div></section>`;
-  await renderUploadLog();
+  const tok = typeof ROUTE_TOK === 'undefined' ? 0 : ROUTE_TOK; await renderUploadLog(); if (typeof stale === 'function' && stale(tok)) return;   // กดไปเมนูอื่นแล้ว ไม่ต้องผูกปุ่มต่อ
   const drop = document.getElementById('upDrop'), input = document.getElementById('upFile'), list = document.getElementById('upList');
   const go = async files => {
     if (!files.length) return; list.innerHTML = '';
