@@ -167,7 +167,9 @@ function limitRows(root) {   // ตารางที่มี data-limit="n": �
 // ===== ภาพรวม: ยอดขาย (เฉพาะส่งสำเร็จ) · ออเดอร์ · AOV · ยอดผ่าน Creator · รอส่งถึง + สถานะออเดอร์ + กราฟรายวัน + แหล่งที่มา + สินค้าขายดี =====
 const SALE_INFO = 'นับเฉพาะออเดอร์ที่<b>ส่งสำเร็จ</b> (ลูกค้าได้รับของแล้ว)<br><b>ไม่รวม</b> กำลังส่ง / คืนสินค้า / ตีกลับ / ยกเลิก';
 async function pageOverview(el) {
+  const tok = ROUTE_TOK;
   const PR = prevRange(), [rows, B, I, N, STA, B0, I0, S0] = await Promise.all([sel('v_sales_daily'), sel('v_basket_daily'), sel('v_item_sales_daily'), sel('v_item_names', false), sel('v_status_daily'), sel('v_basket_daily', true, PR), sel('v_item_sales_daily', true, PR), sel('v_sales_daily', true, PR)]);
+  if (stale(tok)) return;
   if (!rows.length && !STA.length) return el.innerHTML = '<div class="panel empty-note">ยังไม่มียอดขายในช่วงนี้ — อัปโหลดไฟล์คำสั่งซื้อที่หน้า "อัปโหลด"</div>';
   const T = rows.reduce((a, r) => ({ rev: a.rev + +r.revenue, ord: a.ord + +r.orders }), { rev: 0, ord: 0 });
   const bySrc = {}; rows.forEach(r => { const s = bySrc[r.source] = bySrc[r.source] || { rev: 0, ord: 0 }; s.rev += +r.revenue; s.ord += +r.orders; });
@@ -252,7 +254,9 @@ function prodTable(P, TAB = PROD_TAB) {
 
 // ===== Creator: ใครขายได้เท่าไร =====
 async function pageCreators(el) {
+  const tok = ROUTE_TOK;
   const [rows, CST] = await Promise.all([sel('v_creator_daily'), sel('v_creator_status_daily')]);
+  if (stale(tok)) return;
   const stBy = {}; CST.forEach(r => { const x = stBy[r.creator] = stBy[r.creator] || {}; x[r.state] = (x[r.state] || 0) + +r.orders; });
   const okN = c => (stBy[c] || {})['ส่งสำเร็จ'] || 0, backN = c => (stBy[c] || {})['ตีกลับ'] || 0, sentN = c => okN(c) + backN(c) + ((stBy[c] || {})['คืนสินค้า'] || 0);
   const backCell = c => backN(c) ? `${fmt(backN(c))}<small>${(backN(c) / sentN(c) * 100).toFixed(1)}%</small>` : dash;
@@ -296,7 +300,9 @@ async function openCreator(name, c, typesText, stRows) {
 // ===== สินค้าที่ส่ง: ของที่ออกจากคลังจริง (แตกชุดโปรเป็นชิ้น) นับตามวันที่ส่ง · กราฟรายวัน + ตารางสินค้า × วัน (สีเข้ม = ส่งเยอะ) =====
 const TH_WD1 = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 async function pageProducts(el) {
+  const tok = ROUTE_TOK;
   const [D, R, N] = await Promise.all([sel('v_ship_daily'), sel('v_ship_items_daily'), sel('v_item_names', false)]), ds = days(RANGE.from, RANGE.to);
+  if (stale(tok)) return;
   if (!D.length) return el.innerHTML = '<div class="panel empty-note">ยังไม่มีสินค้าที่ส่งในช่วงนี้</div>';
   const names = Object.fromEntries(N.map(r => [r.item, r.name])), dayOf = Object.fromEntries(D.map(r => [r.d, r]));
   const T = D.reduce((a, r) => ({ pcs: a.pcs + +r.pcs, ord: a.ord + +r.orders }), { pcs: 0, ord: 0 }), busy = [...D].sort((a, b) => b.pcs - a.pcs)[0];
@@ -325,7 +331,9 @@ const SALE_STATES = ['ส่งสำเร็จ'];
 let IT = { page: 0, q: '' };
 const IT_PER = 20;
 async function pageItems(el) {
+  const tok = ROUTE_TOK;
   const [S, T, N, PR] = await Promise.all([sel('v_item_sales_daily'), sel('v_sales_daily'), sel('v_item_names', false), sel('products', false)]);
+  if (stale(tok)) return;
   if (!T.length) return el.innerHTML = '<div class="panel empty-note">ยังไม่มียอดขายในช่วงนี้</div>';
   const names = Object.fromEntries(N.map(r => [r.item, r.name])), rsp = Object.fromEntries(PR.filter(r => +r.rsp > 0).map(r => [r.sku, +r.rsp]));
   const by = {}; S.forEach(r => { const x = by[r.item] = by[r.item] || { pcs: 0, amt: 0, avg: 0, byRsp: 0 }; x.pcs += +r.pcs; x.amt += +r.amount; x.avg += +r.pcs_avg; x.byRsp += +r.pcs_rsp; });
@@ -349,13 +357,15 @@ async function pageItems(el) {
   drawOrders(names);
 }
 async function drawOrders(names) {
-  const box = document.getElementById('itBody'); if (!box) return;
+  const tok = ROUTE_TOK, box = document.getElementById('itBody'); if (!box) return;
   let q = DB.client.from('v_orders').select('order_id, d, state, creator, revenue', { count: 'exact' }).gte('d', RANGE.from).lte('d', RANGE.to).in('state', SALE_STATES);
   if (IT.q) q = q.ilike('order_id', `%${IT.q}%`);
   const { data: O, count, error } = await q.order('d', { ascending: false }).order('order_id').range(IT.page * IT_PER, IT.page * IT_PER + IT_PER - 1);
+  if (stale(tok)) return;
   if (error) return box.innerHTML = `<div class="empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(error.message)}</div>`;
   if (!O.length) return box.innerHTML = `<div class="empty-note">${IT.q ? 'ไม่พบหมายเลขคำสั่งซื้อนี้ในช่วงวันที่ที่เลือก' : 'ไม่มีออเดอร์ในช่วงนี้'}</div>`;
   const R = await DB.select('v_order_items', '*', x => x.in('order_id', O.map(o => o.order_id)).order('sku_id').order('line_no').order('k'));
+  if (stale(tok)) return;
   const pages = Math.ceil(count / IT_PER);
   const ST_CLS = { 'ส่งสำเร็จ': 'good', 'คืนสินค้า': 'warn' }, MTIP = { 'ไม่ต้องแบ่ง': 'SKU ชิ้นเดียว ไม่ต้องแบ่งยอด', 'ตาม RSP': 'ชุดโปร: แบ่งยอดตามสัดส่วน RSP', 'หารเฉลี่ย': 'ชุดโปร: หารเฉลี่ยเท่ากันทุกชิ้น (ยังไม่มี RSP ครบในชุด)' };
   box.innerHTML = `<div class="wide"><table class="ui-table tbl it-tbl" data-no-sort data-no-page><thead><tr><th class="l">คำสั่งซื้อ</th><th class="l">วันที่สั่ง</th><th class="l">Creator</th><th class="l">SKU</th><th class="num">ชุด</th><th class="num">ยอด SKU</th><th class="l">สินค้าจริง</th><th class="num">ชิ้น</th><th class="num">ราคาต่อชิ้น</th><th class="num">ยอดหลังแบ่ง ${tip('ยอดของ SKU ที่แบ่งให้สินค้าแต่ละตัว รวมกันเท่ายอด SKU<br>ชี้ที่ตัวเลขเพื่อดูวิธีแบ่ง · จุดสีส้ม = หารเฉลี่ยเพราะยังไม่มี RSP')}</th></tr></thead><tbody>
@@ -395,7 +405,9 @@ async function exportItems(btn, names, rsp, L, A, rev) {
 
 // ===== สต็อก + ราคา RSP: รายการสินค้าจริงทุกตัวที่เคยขาย (ดึงให้เอง) · กรอกชื่อ / RSP / สต็อกตั้งต้นในตาราง · บันทึกรับเข้า =====
 async function pageStock(el) {
+  const tok = ROUTE_TOK;
   const rows = await sel('v_stock', false), today = ymd(new Date());
+  if (stale(tok)) return;
   const noRsp = rows.filter(r => !(+r.rsp > 0)).length, notCounted = rows.filter(r => !r.counted).length, low = rows.filter(r => r.days_left != null && +r.days_left < +r.min_days).length;
   const num = v => v == null || v === '' ? '' : +v;
   el.innerHTML = `<section class="ui-metrics hero">${metric('สินค้าจริง', fmt(rows.length), 'รายการ', 'สินค้าจริงทุกตัวที่เคยขาย (แตกจากรหัส SKU) + ที่เพิ่มเอง')}${metric('ยังไม่มี RSP', fmt(noRsp), noRsp ? 'ชุดโปรที่มีสินค้าเหล่านี้จะหารเฉลี่ย' : 'ครบแล้ว', 'RSP ใช้แบ่งยอดชุดโปรในหน้ารายละเอียดออเดอร์')}
@@ -434,7 +446,9 @@ async function pageStock(el) {
 
 // ===== เงินเข้า: รายได้ − ค่าธรรมเนียมทั้งหมด (รวมค่าคอม Creator แล้ว) + ปรับยอด / ชดเชย = เงินเข้า · ตามรายงานรับเงิน นับตามวันที่เงินเข้า =====
 async function pageMoney(el) {
+  const tok = ROUTE_TOK;
   const rows = [...await sel('v_settlement_daily')].sort((a, b) => a.d < b.d ? 1 : -1).map(r => ({ ...r, adj: +r.amount - +r.revenue - +r.fees }));
+  if (stale(tok)) return;
   const S = k => rows.reduce((a, r) => a + (+r[k] || 0), 0), feePct = S('revenue') ? Math.abs(S('fees')) / S('revenue') * 100 : 0;
   const neg = v => `<span class="ui-muted">${fmt(v)}</span>`;
   el.innerHTML = `<section class="ui-metrics hero money-hero">${metric('รายได้', fmt(S('revenue')), 'ยอดขาย + ค่าส่งที่ลูกค้าจ่าย ฯลฯ', 'รายได้ทั้งหมดตามรายงานรับเงิน (ก่อนหักค่าธรรมเนียม)')}
@@ -448,17 +462,19 @@ async function pageMoney(el) {
 
 // ===== ตัวสลับหน้า (#ชื่อหน้า) =====
 function pageActs() { let a = document.getElementById('pageActs'); if (!a) { a = document.createElement('div'); a.id = 'pageActs'; a.className = 'page-acts'; document.getElementById('range').before(a); } return a; }
-let PREFETCHED = '';
+let PREFETCHED = '', ROUTE_TOK = 0;
+const stale = tok => tok !== ROUTE_TOK;   // true = ผู้ใช้กดไปเมนูอื่นแล้ว หน้านี้ไม่ต้องวาดต่อ
 async function route(quiet) {
+  const tok = ++ROUTE_TOK;
   if (!quiet) closeCreator(); const keepY = quiet ? scrollY : 0; pageActs().innerHTML = '';
   const id = (location.hash || '#overview').slice(1), pg = PAGES.find(p => p[0] === id) || PAGES[0];
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.p === pg[0]));
   document.getElementById('pageTitle').textContent = pg[1];
   document.getElementById('range').style.visibility = ['stock', 'upload'].includes(pg[0]) ? 'hidden' : 'visible';
   const el = document.getElementById('content'); if (!quiet) el.innerHTML = pg[0] === 'upload' ? '' : SKEL;
-  try { await ({ overview: pageOverview, creators: pageCreators, products: pageProducts, items: pageItems, stock: pageStock, money: pageMoney, upload: pageUpload })[pg[0]](el); limitRows(el); if (window.UI && UI.fit) UI.fit(); if (quiet) scrollTo(0, keepY); pinSoon();
+  try { await ({ overview: pageOverview, creators: pageCreators, products: pageProducts, items: pageItems, stock: pageStock, money: pageMoney, upload: pageUpload })[pg[0]](el); if (stale(tok)) return; limitRows(el); if (window.UI && UI.fit) UI.fit(); if (quiet) scrollTo(0, keepY); pinSoon();
     if (PREFETCHED !== RANGE.from + RANGE.to) { PREFETCHED = RANGE.from + RANGE.to; prefetch(); } }
-  catch (e) { el.innerHTML = `<div class="panel empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`; }
+  catch (e) { if (!stale(tok)) el.innerHTML = `<div class="panel empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`; }
 }
 document.getElementById('appName').textContent = (window.APP && APP.NAME) || 'ระบบวิเคราะห์ยอดขาย'; document.title = document.getElementById('appName').textContent;
 document.querySelector('.sb-logo').innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg>';   // โลโก้กลาง ไม่ผูกกับช่องทางใด
