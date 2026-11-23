@@ -1,6 +1,6 @@
 // app.js — หน้าวิเคราะห์ (อ่านจาก view ในฐานข้อมูล · หน้าเว็บแค่แสดง) · หน้า: ภาพรวม · Creator · สินค้าที่ส่ง · สต็อก · เงินเข้า · อัปโหลด
 // กฎที่ยกมาจากระบบต้นแบบ: ยอดเงินเต็มจำนวน ไม่มี ฿ · ⓘ ทุกตัวเลขบอกรวม / ไม่รวม · แถวรวมล่างสุด = ตัวเลขในแถบบน · สีเขียว / แดงใช้เมื่อหมายถึงดี / ไม่ดีเท่านั้น
-const PAGES = [['overview', 'ภาพรวม'], ['creators', 'Creator'], ['products', 'สินค้าที่ส่ง'], ['items', 'รายละเอียดออเดอร์'], ['stock', 'สต็อก'], ['money', 'เงินเข้า'], ['upload', 'อัปโหลด']];
+const PAGES = [['today', 'ต้องส่งวันนี้'], ['overview', 'ภาพรวม'], ['creators', 'Creator'], ['products', 'สินค้าที่ส่ง'], ['items', 'รายละเอียดออเดอร์'], ['stock', 'สต็อก'], ['money', 'เงินเข้า'], ['upload', 'อัปโหลด']];
 const fmt = v => (Math.round(+v || 0) || 0).toLocaleString('en-US');   // || 0 กัน "-0"
 const fmt1 = v => (+v || 0).toLocaleString('en-US', { maximumFractionDigits: 1 });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -134,7 +134,7 @@ function redrawSoon() {   // ข้อมูลใหม่มาถึง → �
 }
 // โหลดข้อมูลของหน้าอื่นรอไว้ (ช่วงวันที่เดียวกัน) ตอนเครื่องว่าง → สลับหน้าแล้วขึ้นทันที
 const PAGE_VIEWS = { overview: ['v_sales_daily', 'v_basket_daily', 'v_item_sales_daily', 'v_status_daily'], creators: ['v_creator_daily', 'v_creator_status_daily'], products: ['v_ship_daily', 'v_ship_items_daily'], items: ['v_item_sales_daily', 'v_sales_daily'], money: ['v_settlement_daily'] };
-const SHARED_VIEWS = ['v_item_names', 'v_stock', 'products'];
+const SHARED_VIEWS = ['v_to_ship', 'v_item_names', 'v_stock', 'products'];
 function prefetch() {
   const jobs = [...new Set(Object.values(PAGE_VIEWS).flat())].map(v => [v, true]).concat(SHARED_VIEWS.map(v => [v, false])).filter(([v, r]) => !CACHE.has(ckey(v, r)));
   const next = () => { const j = jobs.shift(); if (!j) return; sel(j[0], j[1]).catch(() => {}).finally(() => (window.requestIdleCallback || setTimeout)(next)); };
@@ -438,6 +438,42 @@ async function exportItems(btn, names, rsp, L, A, rev, BL, M) {
   btn.disabled = false; btn.innerHTML = label;
 }
 
+// ===== ต้องส่งวันนี้: ออเดอร์ที่ขนส่งยังไม่รับ (ตามไฟล์คำสั่งซื้อล่าสุด) → สินค้าจริงที่ต้องหยิบ → สต็อกเหลือหลังส่ง · ไว้ให้ทีมนับของ =====
+async function pageToday(el) {
+  const tok = ROUTE_TOK;
+  const [T, ST, U] = await Promise.all([sel('v_to_ship', false), sel('v_stock', false), DB.select('uploads', 'uploaded_at', q => q.eq('kind', 'orders').order('uploaded_at', { ascending: false }).limit(1)).catch(() => [])]);
+  if (stale(tok)) return;
+  const cur = T.filter(r => r.in_last), old = T.filter(r => !r.in_last), ords = rows => new Set(rows.map(r => r.order_id)).size;
+  const stock = Object.fromEntries(ST.map(r => [r.sku, r])), by = {};
+  cur.forEach(r => { const x = by[r.item] = by[r.item] || { wait: 0, rts: 0 }; x[r.rts ? 'rts' : 'wait'] += +r.pcs; });
+  const L = Object.entries(by).map(([k, x]) => { const st = stock[k], t = x.wait + x.rts, oh = st && st.counted ? +st.on_hand : null; return { k, name: st ? st.name : k, ...x, t, oh, after: oh == null ? null : oh - t }; })
+    .sort((a, b) => b.t - a.t || (a.k < b.k ? -1 : 1));
+  const A = L.reduce((a, x) => ({ wait: a.wait + x.wait, rts: a.rts + x.rts, t: a.t + x.t }), { wait: 0, rts: 0, t: 0 });
+  const short = L.filter(x => x.after != null && x.after < 0), noStock = L.filter(x => x.oh == null), pre = ords(cur.filter(r => r.pre));
+  const at = U[0] ? new Date(U[0].uploaded_at) : null, hm = at ? at.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' }) : '', isToday = at && ymd(at) === ymd(new Date());
+  const atTxt = at ? (isToday ? `วันนี้ ${hm}` : `${dTh(ymd(at))} ${hm}`) : '—';
+  const oldD = old.map(r => r.d).filter(Boolean).sort();
+  const oldChip = old.length ? `<span class="ui-badge warn has-tip td-old" data-tip="${esc(`ออเดอร์ที่ไฟล์เก่าบอกว่ายังไม่ส่ง แต่ไม่อยู่ในไฟล์รอบล่าสุด สถานะอาจเปลี่ยนแล้ว (ส่งไปแล้ว / ยกเลิก)\nสั่งวันที่ ${dLong(oldD[0])}${oldD[0] !== oldD[oldD.length - 1] ? ' – ' + dLong(oldD[oldD.length - 1]) : ''}\nวิธีแก้: export ไฟล์คำสั่งซื้อที่ครอบคลุมวันที่สั่งนี้ แล้วอัปอีกครั้ง`)}">ค้างจากไฟล์เก่า ${fmt(ords(old))} ออเดอร์ · ไม่นับรวม</span>` : '';
+  const name = x => x.name && x.name !== x.k ? `<span class="pn ui-trunc">${esc(x.name)}</span><small class="ui-code">${esc(x.k)}</small>` : `<span class="pn ui-code">${esc(x.k)}</span>`;
+  el.innerHTML = `<section class="ui-metrics hero td-hero">
+      ${metric('ออเดอร์ที่ต้องส่ง', fmt(ords(cur)), `รอจัดส่ง ${fmt(ords(cur.filter(r => !r.rts)))} · รอขนส่งเข้ารับ ${fmt(ords(cur.filter(r => r.rts)))}`, 'ออเดอร์ที่ขนส่งยังไม่รับไป (ยังไม่มี Shipped Time) ไม่รวมยกเลิก / ยังไม่ชำระเงิน<br>รอจัดส่ง = ยังไม่กดจัดเตรียมการจัดส่ง (RTS Time ว่าง)<br>รอขนส่งเข้ารับ = กดจัดส่งแล้ว รอขนส่งมารับ' + (pre ? `<br>ในนี้ Pre-order ${fmt(pre)} ออเดอร์` : ''))}
+      ${metric('ชิ้นที่ต้องส่ง', fmt(A.t), `สินค้าจริง ${fmt(L.length)} รายการ`, 'นับเป็นชิ้นจริง ชุดโปรแตกเป็นสินค้าในชุดแล้ว')}
+      ${metric('สต็อกไม่พอ', short.length ? `<span style="color:var(--bad)">${fmt(short.length)}</span>` : '0', short.length ? 'รายการ ต้องเติมก่อนส่ง' : noStock.length ? `พอ · ยังไม่ตั้งสต็อก ${fmt(noStock.length)} รายการ` : 'พอทุกรายการ', 'สต็อกตอนนี้ − ชิ้นที่ต้องส่ง ติดลบ<br>นับเฉพาะสินค้าที่ตั้งสต็อกตั้งต้นแล้ว (หน้าสต็อก)')}
+      ${metric('ข้อมูลจากไฟล์', isToday || !at ? atTxt : `<span style="color:var(--warn)">${atTxt}</span>`, isToday ? 'ไฟล์คำสั่งซื้อที่อัปล่าสุด' : 'ยังไม่ได้อัปไฟล์ของวันนี้', 'ตัวเลขหน้านี้มาจากไฟล์คำสั่งซื้อที่อัปล่าสุด<br>ก่อนนับของ: export ไฟล์คำสั่งซื้อจาก Seller Center แล้วอัปที่เมนูอัปโหลด')}</section>
+    <section class="panel td-panel"><div class="panel-h"><h2>สินค้าที่ต้องส่ง ${tip('แตกทุกออเดอร์ที่ต้องส่งเป็นสินค้าจริง<br>สต็อกตอนนี้ = ตั้งต้น + รับเข้า − ส่งออกแล้ว (หน้าสต็อก)<br>เหลือหลังส่ง = สต็อกตอนนี้ − รวมต้องส่ง = ของบนชั้นที่ควรเหลือ หลังแพ็กครบทุกออเดอร์')}</h2>
+      <span style="flex:1"></span>${oldChip}<button type="button" class="btn" id="tdPrint"${L.length ? '' : ' disabled'}>พิมพ์ใบนับ</button></div>
+      <div class="print-h">ใบนับสินค้า · ต้องส่ง ${fmt(ords(cur))} ออเดอร์ ${fmt(A.t)} ชิ้น · ข้อมูลจากไฟล์ ${at ? dLong(ymd(at)) + ' ' + hm : '—'}</div>
+      ${L.length ? `<div class="wide"><table class="ui-table tbl prod td-tbl" data-no-sort data-no-page><thead><tr><th class="num">#</th><th class="l">สินค้าจริง</th>
+        <th class="num">รอจัดส่ง ${tip('ยังไม่กดจัดเตรียมการจัดส่ง')}</th><th class="num">รอขนส่งเข้ารับ ${tip('กดจัดส่งแล้ว รอขนส่งมารับ')}</th><th class="num">รวมต้องส่ง</th>
+        <th class="num">สต็อกตอนนี้ ${tip('ตั้งต้น + รับเข้า − ส่งออกแล้ว · ยังไม่หักออเดอร์ที่ต้องส่ง')}</th><th class="num">เหลือหลังส่ง ${tip('สต็อกตอนนี้ − รวมต้องส่ง<br>ไว้เทียบกับของที่นับได้บนชั้น หลังแพ็กครบ')}</th><th class="num print-only">นับได้</th></tr></thead><tbody>
+        ${L.map((x, i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l">${name(x)}</td><td class="num">${x.wait ? fmt(x.wait) : dash}</td><td class="num">${x.rts ? fmt(x.rts) : dash}</td><td class="num"><b>${fmt(x.t)}</b></td>
+          <td class="num">${x.oh == null ? `<a href="#stock" class="ui-muted has-tip" data-tip="ยังไม่ได้กรอกสต็อกตั้งต้น · กดเพื่อไปหน้าสต็อก">ยังไม่ตั้ง</a>` : fmt(x.oh)}</td>
+          <td class="num">${x.after == null ? dash : x.after < 0 ? `<span class="ui-chip dn">ขาด ${fmt(-x.after)}</span>` : `<b>${fmt(x.after)}</b>`}</td><td class="num print-only"></td></tr>`).join('')}
+        </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(L.length)} รายการ</td><td class="num">${fmt(A.wait)}</td><td class="num">${fmt(A.rts)}</td><td class="num">${fmt(A.t)}</td><td></td><td></td><td class="print-only"></td></tr></tfoot></table></div>`
+        : `<div class="empty-note">ไม่มีออเดอร์ที่ต้องส่ง ตามไฟล์คำสั่งซื้อที่อัปล่าสุด${at ? '' : ' (ยังไม่เคยอัปไฟล์คำสั่งซื้อ)'}</div>`}</section>`;
+  const pb = document.getElementById('tdPrint'); if (pb) pb.onclick = () => window.print();
+}
+
 // ===== สต็อก + ราคา RSP: รายการสินค้าจริงทุกตัวที่เคยขาย (ดึงให้เอง) · กรอกชื่อ / RSP / สต็อกตั้งต้นในตาราง · บันทึกรับเข้า =====
 async function pageStock(el) {
   const tok = ROUTE_TOK;
@@ -502,24 +538,24 @@ const stale = tok => tok !== ROUTE_TOK;   // true = ผู้ใช้กดไ�
 async function route(quiet) {
   const tok = ++ROUTE_TOK;
   if (!quiet) closeCreator(); const keepY = quiet ? scrollY : 0; pageActs().innerHTML = '';
-  const id = (location.hash || '#overview').slice(1), pg = PAGES.find(p => p[0] === id) || PAGES[0];
+  const id = (location.hash || '#today').slice(1), pg = PAGES.find(p => p[0] === id) || PAGES[0];
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.p === pg[0]));
   document.getElementById('pageTitle').textContent = pg[1]; document.getElementById('pageSub').textContent = PAGE_SUB[pg[0]] || '';
-  document.getElementById('range').style.visibility = ['stock', 'upload'].includes(pg[0]) ? 'hidden' : 'visible';
+  document.getElementById('range').style.visibility = ['today', 'stock', 'upload'].includes(pg[0]) ? 'hidden' : 'visible';
   const el = document.getElementById('content'); if (!quiet) el.innerHTML = pg[0] === 'upload' ? '' : SKEL;
-  try { await ({ overview: pageOverview, creators: pageCreators, products: pageProducts, items: pageItems, stock: pageStock, money: pageMoney, upload: pageUpload })[pg[0]](el); if (stale(tok)) return; limitRows(el); if (window.UI && UI.fit) UI.fit(); if (quiet) scrollTo(0, keepY); pinSoon();
+  try { await ({ today: pageToday, overview: pageOverview, creators: pageCreators, products: pageProducts, items: pageItems, stock: pageStock, money: pageMoney, upload: pageUpload })[pg[0]](el); if (stale(tok)) return; limitRows(el); if (window.UI && UI.fit) UI.fit(); if (quiet) scrollTo(0, keepY); pinSoon();
     if (PREFETCHED !== RANGE.from + RANGE.to) { PREFETCHED = RANGE.from + RANGE.to; prefetch(); } }
   catch (e) { if (!stale(tok)) el.innerHTML = `<div class="panel empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`; }
 }
 // ===== เมนูซ้าย + แถบบน แบบ Deesay: โลโก้ + ชื่อรอง + ปุ่มย่อเมนู · การ์ดสถานะข้อมูลท้ายเมนู · ปุ่ม Updated ข้างชื่อหน้า =====
-const PAGE_SUB = { overview: 'ยอดขาย = ออเดอร์ที่ส่งสำเร็จ · นับตามวันที่สั่งซื้อ', creators: 'ยอดขายผ่าน Creator · ส่งสำเร็จ · กดชื่อเพื่อดูรายละเอียด', products: 'ของที่ออกจากคลัง · นับตามวันที่ส่ง',
+const PAGE_SUB = { today: 'ออเดอร์ที่ขนส่งยังไม่รับ · สินค้าที่ต้องหยิบ · สต็อกเหลือหลังส่ง', overview: 'ยอดขาย = ออเดอร์ที่ส่งสำเร็จ · นับตามวันที่สั่งซื้อ', creators: 'ยอดขายผ่าน Creator · ส่งสำเร็จ · กดชื่อเพื่อดูรายละเอียด', products: 'ของที่ออกจากคลัง · นับตามวันที่ส่ง',
   items: 'ยอดแยกรายสินค้า + เงินที่ได้รับจริง · สำหรับบัญชี', stock: 'คงเหลือ = ตั้งต้น + รับเข้า − ส่งออก · ราคา RSP', money: 'ตามรายงานรับเงิน · นับตามวันที่เงินเข้า', upload: 'ไฟล์คำสั่งซื้อ + รายงานรับเงิน จาก TikTok Seller Center' };
 const APP_NAME = (window.APP && APP.NAME) || 'ระบบวิเคราะห์ยอดขาย', APP_SUB = (window.APP && APP.SUBTITLE) || 'Sales & Marketing';
 document.title = APP_NAME;
 document.querySelector('.sb-brand').innerHTML = `<span class="sb-logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg></span>
   <span class="sb-name"><b id="appName">${esc(APP_NAME)}</b><small>${esc(APP_SUB)}</small></span>
   <button type="button" class="sb-mini-btn" id="sbMini" aria-label="ย่อ / ขยายเมนู" data-tip="ย่อ / ขยายเมนู"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11 17-5-5 5-5M18 17l-5-5 5-5"/></svg></button>`;
-const NAV_ICON = { overview: 'M4 13h6V4H4zM14 20h6v-9h-6zM14 4h6v4h-6zM4 20h6v-3H4z', creators: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0', products: 'M3 7h11v9H3zM14 10h4l3 3v3h-7M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
+const NAV_ICON = { today: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8.5 13.5l2.5 2.5 4.5-4.5', overview: 'M4 13h6V4H4zM14 20h6v-9h-6zM14 4h6v4h-6zM4 20h6v-3H4z', creators: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0', products: 'M3 7h11v9H3zM14 10h4l3 3v3h-7M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   items: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3', stock: 'M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8', money: 'M3 7h18v12H3zM3 11h18M7 15h3', upload: 'M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3' };
 document.getElementById('nav').innerHTML = PAGES.map(([id, n]) => `<a href="#${id}" data-p="${id}" aria-label="${n}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${NAV_ICON[id] || ''}"/></svg><span>${n}</span></a>`).join('');
 // ท้ายเมนู: การ์ดสถานะข้อมูล + ปุ่มโหมด / ออก (ไอคอน)
