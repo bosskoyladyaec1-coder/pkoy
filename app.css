@@ -231,3 +231,31 @@ body.sb-mini .sb-foot { flex-direction:column; } body.sb-mini .sb-btn { padding:
 .tbl.prod th:nth-child(2), .tbl.prod td:nth-child(2) { width:42%; }
 .tbl.prod .pn { max-width:100%; } .tbl.prod td.l { overflow:hidden; }
 .drawer .tbl.prod th:nth-child(2), .drawer .tbl.prod td:nth-child(2) { width:34%; } .drawer .tbl.prod { min-width:620px; }
+/* (2026-11-23) หน้าต้องส่งวันนี้ + ใบนับสำหรับพิมพ์ (คอลัมน์ "นับได้" ว่างไว้ให้เขียน · ซ่อนเมนู / การ์ด / ปุ่ม) */
+.td-panel .panel-h { gap:10px; flex-wrap:wrap; } .td-old { cursor:default; }
+.print-only, .print-h { display:none; }
+@media (max-width:700px) {   /* มือถือ: ซ่อนคอลัมน์แยกรอจัดส่ง / รอขนส่งเข้ารับ ให้ตารางพอดีจอ ไม่ต้องเลื่อนข้าง (ยอดแยกดูได้ที่การ์ดด้านบน) */
+  .td-tbl { min-width:0 !important; }
+  .td-tbl th:nth-child(3), .td-tbl td:nth-child(3), .td-tbl th:nth-child(4), .td-tbl td:nth-child(4) { display:none; }
+  .tbl.prod.td-tbl th:first-child, .tbl.prod.td-tbl td:first-child { width:26px; padding-left:2px; padding-right:2px; }
+  .tbl.prod.td-tbl th:nth-child(2), .tbl.prod.td-tbl td:nth-child(2) { width:auto !important; padding-right:4px; }
+  .tbl.prod.td-tbl th:nth-child(n+5), .tbl.prod.td-tbl td:nth-child(n+5) { width:60px; padding-left:3px; padding-right:3px; }
+  .td-tbl th { white-space:normal !important; line-height:1.3; } .td-tbl .ui-trunc { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .td-hero .md { white-space:normal; }
+}
+@media print {
+  @page { size:A4; margin:12mm; }
+  body, body.light-theme { --text:#000; --text2:#222; --text3:#555; --border:#999; --bg:#fff; --bg2:#fff; --bg3:#fff; --tot-bg:#eef2f8; background:#fff !important; color:#000 !important; }
+  .sb, .topbar, .ui-metrics, .td-panel .panel-h, .pg-note, .ui-tip { display:none !important; }
+  .main, #content { margin:0 !important; padding:0 !important; }
+  .panel { box-shadow:none !important; border:0 !important; background:#fff !important; padding:0 !important; }
+  .print-h { display:block; font-size:15px; font-weight:700; margin:0 0 10px; color:#000; }
+  .tbl.prod { min-width:0 !important; } .wide { overflow:visible !important; }
+  .ui-table th, .ui-table td { color:#000 !important; border-bottom:1px solid #bbb !important; padding-top:7px !important; padding-bottom:7px !important; }
+  .td-tbl th.print-only, .td-tbl td.print-only { display:table-cell; border:1px solid #888 !important; }
+  .td-tbl .pr-i { display:none !important; } .td-tbl a, .td-tbl .has-tip { color:#000 !important; text-decoration:none !important; border:0 !important; }
+  .td-tbl th { white-space:normal !important; font-size:12px !important; line-height:1.3; transform:none !important; box-shadow:none !important; }
+  .td-tbl th:nth-child(2), .td-tbl td:nth-child(2) { width:34% !important; }
+  .ui-chip.dn { background:none !important; color:#000 !important; font-weight:700; }
+  tr { break-inside:avoid; }
+}
