@@ -112,11 +112,12 @@ async function pageUpload(el) {
     const items = [...files].map(() => list.appendChild(Object.assign(document.createElement('div'), { className: 'up-item' })));
     let saved = false;
     for (let i = 0; i < files.length; i++) saved = (await uploadOne(files[i], items[i])) || saved;   // ทีละไฟล์ตามลำดับ
-    if (saved) {   // อัปเดตตารางสรุปทุกหน้าครั้งเดียวหลังอัปครบทุกไฟล์ (SQL 10: refresh_sales)
+    if (saved) {   // อัปเดตตารางสรุปทุกหน้าครั้งเดียวหลังอัปครบทุกไฟล์ (SQL 13: ฐานข้อมูลทำเองทุก 1 นาที)
       const r = list.appendChild(Object.assign(document.createElement('div'), { className: 'up-item' }));
-      r.innerHTML = '<b>อัปเดตตัวเลขทุกหน้า</b><span class="msg">กำลังคำนวณ…</span>';
-      try { await DB.rpc('refresh_sales'); r.className = 'up-item ok'; r.querySelector('.msg').textContent = '✓ อัปเดตแล้ว'; }
-      catch (e) { r.className = 'up-item warn'; r.querySelector('.msg').textContent = 'อัปเดตตัวเลขไม่สำเร็จ: ' + e.message + ' — แจ้งผู้ดูแลระบบ'; }
+      r.innerHTML = '<b>อัปเดตตัวเลขทุกหน้า</b><span class="msg">กำลังคำนวณ… (ปกติ 1–2 นาที · ปิดหน้านี้ได้ ระบบทำต่อเอง)</span>';
+      if (window.loadFreshness) loadFreshness(true);   // แถบเมนูขึ้น "กำลังอัปเดตตัวเลข" ทันที
+      const res = await waitSales(m => { r.querySelector('.msg').textContent = m; });   // SQL 13: ฐานข้อมูลคำนวณเอง (cron ทุก 1 นาที) · หน้าเว็บแค่รอดูผล
+      r.className = 'up-item ' + (res === true ? 'ok' : 'warn'); r.querySelector('.msg').textContent = res === true ? '✓ อัปเดตแล้ว ทุกหน้าใช้ข้อมูลใหม่' : res;
     }
     input.value = ''; if (window.clearCache) clearCache(); renderUploadLog(); if (window.loadFreshness) loadFreshness(true);
   };
