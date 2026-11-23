@@ -134,7 +134,7 @@ function redrawSoon() {   // ข้อมูลใหม่มาถึง → �
 }
 // โหลดข้อมูลของหน้าอื่นรอไว้ (ช่วงวันที่เดียวกัน) ตอนเครื่องว่าง → สลับหน้าแล้วขึ้นทันที
 const PAGE_VIEWS = { overview: ['v_sales_daily', 'v_basket_daily', 'v_item_sales_daily', 'v_status_daily'], creators: ['v_creator_daily', 'v_creator_status_daily'], products: ['v_ship_daily', 'v_ship_items_daily'], items: ['v_item_sales_daily', 'v_sales_daily'], money: ['v_settlement_daily'] };
-const SHARED_VIEWS = ['v_to_ship', 'v_item_names', 'v_stock', 'products'];
+const SHARED_VIEWS = ['v_to_ship', 'v_to_ship_sets', 'v_item_names', 'v_stock', 'products'];
 function prefetch() {
   const jobs = [...new Set(Object.values(PAGE_VIEWS).flat())].map(v => [v, true]).concat(SHARED_VIEWS.map(v => [v, false])).filter(([v, r]) => !CACHE.has(ckey(v, r)));
   const next = () => { const j = jobs.shift(); if (!j) return; sel(j[0], j[1]).catch(() => {}).finally(() => (window.requestIdleCallback || setTimeout)(next)); };
@@ -439,38 +439,63 @@ async function exportItems(btn, names, rsp, L, A, rev, BL, M) {
 }
 
 // ===== ต้องส่งวันนี้: ออเดอร์ที่ขนส่งยังไม่รับ (ตามไฟล์คำสั่งซื้อล่าสุด) → สินค้าจริงที่ต้องหยิบ → สต็อกเหลือหลังส่ง · ไว้ให้ทีมนับของ =====
+const TD = { tab: 'item' };   // แท็บที่เลือกในหน้าต้องส่งวันนี้ (จำไว้ระหว่างสลับหน้า)
+// นับเฉพาะ "รอขนส่งเข้ารับ" (กดจัดเตรียมการจัดส่งแล้ว = แพ็กแล้ว ของออกจากชั้นแล้ว) · รอจัดส่ง = ยังไม่เตรียมของ แสดงแค่จำนวนออเดอร์ในการ์ด
 async function pageToday(el) {
   const tok = ROUTE_TOK;
-  const [T, ST, U] = await Promise.all([sel('v_to_ship', false), sel('v_stock', false), DB.select('uploads', 'uploaded_at', q => q.eq('kind', 'orders').order('uploaded_at', { ascending: false }).limit(1)).catch(() => [])]);
+  const [T, TS, ST, U] = await Promise.all([sel('v_to_ship', false), sel('v_to_ship_sets', false), sel('v_stock', false), DB.select('uploads', 'uploaded_at', q => q.eq('kind', 'orders').order('uploaded_at', { ascending: false }).limit(1)).catch(() => [])]);
   if (stale(tok)) return;
-  const cur = T.filter(r => r.in_last), old = T.filter(r => !r.in_last), ords = rows => new Set(rows.map(r => r.order_id)).size;
+  const ords = rows => new Set(rows.map(r => r.order_id)).size;
+  const cur = T.filter(r => r.in_last && r.rts), old = T.filter(r => !r.in_last && r.rts), waitO = ords(T.filter(r => r.in_last && !r.rts));
   const stock = Object.fromEntries(ST.map(r => [r.sku, r])), by = {};
-  cur.forEach(r => { const x = by[r.item] = by[r.item] || { wait: 0, rts: 0 }; x[r.rts ? 'rts' : 'wait'] += +r.pcs; });
-  const L = Object.entries(by).map(([k, x]) => { const st = stock[k], t = x.wait + x.rts, oh = st && st.counted ? +st.on_hand : null; return { k, name: st ? st.name : k, ...x, t, oh, after: oh == null ? null : oh - t }; })
+  cur.forEach(r => { by[r.item] = (by[r.item] || 0) + +r.pcs; });
+  const L = Object.entries(by).map(([k, t]) => { const st = stock[k], oh = st && st.counted ? +st.on_hand : null; return { k, name: st ? st.name : k, t, oh, after: oh == null ? null : oh - t }; })
     .sort((a, b) => b.t - a.t || (a.k < b.k ? -1 : 1));
-  const A = L.reduce((a, x) => ({ wait: a.wait + x.wait, rts: a.rts + x.rts, t: a.t + x.t }), { wait: 0, rts: 0, t: 0 });
+  const tot = L.reduce((a, x) => a + x.t, 0);
   const short = L.filter(x => x.after != null && x.after < 0), noStock = L.filter(x => x.oh == null), pre = ords(cur.filter(r => r.pre));
   const at = U[0] ? new Date(U[0].uploaded_at) : null, hm = at ? at.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' }) : '', isToday = at && ymd(at) === ymd(new Date());
-  const atTxt = at ? (isToday ? `วันนี้ ${hm}` : `${dTh(ymd(at))} ${hm}`) : '—';
+  const atTxt = at ? (isToday ? `วันนี้ ${hm}` : `${dTh(ymd(at))} ${hm}`) : '—', fileTxt = at ? dLong(ymd(at)) + ' ' + hm : '—';
   const oldD = old.map(r => r.d).filter(Boolean).sort();
-  const oldChip = old.length ? `<span class="ui-badge warn has-tip td-old" data-tip="${esc(`ออเดอร์ที่ไฟล์เก่าบอกว่ายังไม่ส่ง แต่ไม่อยู่ในไฟล์รอบล่าสุด สถานะอาจเปลี่ยนแล้ว (ส่งไปแล้ว / ยกเลิก)\nสั่งวันที่ ${dLong(oldD[0])}${oldD[0] !== oldD[oldD.length - 1] ? ' – ' + dLong(oldD[oldD.length - 1]) : ''}\nวิธีแก้: export ไฟล์คำสั่งซื้อที่ครอบคลุมวันที่สั่งนี้ แล้วอัปอีกครั้ง`)}">ค้างจากไฟล์เก่า ${fmt(ords(old))} ออเดอร์ · ไม่นับรวม</span>` : '';
+  const oldChip = old.length ? `<span class="ui-badge warn has-tip td-old" data-tip="${esc(`ออเดอร์ที่ไฟล์เก่าบอกว่ารอขนส่งเข้ารับ แต่ไม่อยู่ในไฟล์รอบล่าสุด สถานะอาจเปลี่ยนแล้ว (ส่งไปแล้ว / ยกเลิก)\nสั่งวันที่ ${dLong(oldD[0])}${oldD[0] !== oldD[oldD.length - 1] ? ' – ' + dLong(oldD[oldD.length - 1]) : ''}\nวิธีแก้: export ไฟล์คำสั่งซื้อที่ครอบคลุมวันที่สั่งนี้ แล้วอัปอีกครั้ง`)}">ค้างจากไฟล์เก่า ${fmt(ords(old))} ออเดอร์ · ไม่นับรวม</span>` : '';
   const name = x => x.name && x.name !== x.k ? `<span class="pn ui-trunc">${esc(x.name)}</span><small class="ui-code">${esc(x.k)}</small>` : `<span class="pn ui-code">${esc(x.k)}</span>`;
+  // ตามตะกร้า: ตะกร้า (ชื่อสินค้าใน TikTok) → SKU ในตะกร้า · ชุด = จำนวนในไฟล์คำสั่งซื้อ
+  const BK = {};
+  TS.filter(r => r.in_last && r.rts).forEach(r => { const b = BK[r.basket] = BK[r.basket] || { name: r.basket, o: new Set(), sets: 0, sk: {} };
+    const k = b.sk[r.sku] = b.sk[r.sku] || { sku: r.sku, v: r.variation, o: new Set(), sets: 0 };
+    [b, k].forEach(x => { x.o.add(r.order_id); x.sets += +r.sets; }); });
+  const BL = Object.values(BK).map(b => ({ ...b, sk: Object.values(b.sk).sort((x, y) => y.sets - x.sets || (x.sku < y.sku ? -1 : 1)) })).sort((x, y) => y.sets - x.sets || (x.name < y.name ? -1 : 1));
+  const setsTot = BL.reduce((a, b) => a + b.sets, 0);
   el.innerHTML = `<section class="ui-metrics hero td-hero">
-      ${metric('ออเดอร์ที่ต้องส่ง', fmt(ords(cur)), `รอจัดส่ง ${fmt(ords(cur.filter(r => !r.rts)))} · รอขนส่งเข้ารับ ${fmt(ords(cur.filter(r => r.rts)))}`, 'ออเดอร์ที่ขนส่งยังไม่รับไป (ยังไม่มี Shipped Time) ไม่รวมยกเลิก / ยังไม่ชำระเงิน<br>รอจัดส่ง = ยังไม่กดจัดเตรียมการจัดส่ง (RTS Time ว่าง)<br>รอขนส่งเข้ารับ = กดจัดส่งแล้ว รอขนส่งมารับ' + (pre ? `<br>ในนี้ Pre-order ${fmt(pre)} ออเดอร์` : ''))}
-      ${metric('ชิ้นที่ต้องส่ง', fmt(A.t), `สินค้าจริง ${fmt(L.length)} รายการ`, 'นับเป็นชิ้นจริง ชุดโปรแตกเป็นสินค้าในชุดแล้ว')}
-      ${metric('สต็อกไม่พอ', short.length ? `<span style="color:var(--bad)">${fmt(short.length)}</span>` : '0', short.length ? 'รายการ ต้องเติมก่อนส่ง' : noStock.length ? `พอ · ยังไม่ตั้งสต็อก ${fmt(noStock.length)} รายการ` : 'พอทุกรายการ', 'สต็อกตอนนี้ − ชิ้นที่ต้องส่ง ติดลบ<br>นับเฉพาะสินค้าที่ตั้งสต็อกตั้งต้นแล้ว (หน้าสต็อก)')}
+      ${metric('ออเดอร์รอขนส่งเข้ารับ', fmt(ords(cur)), waitO ? `ยังไม่เตรียมของอีก ${fmt(waitO)} ออเดอร์ (ไม่นับ)` : 'ไม่มีออเดอร์ที่ยังไม่เตรียมของ', 'ออเดอร์ที่กดจัดเตรียมการจัดส่งแล้ว (มี RTS Time) แต่ขนส่งยังไม่มารับ (ยังไม่มี Shipped Time)<br>รอจัดส่ง = ยังไม่กดจัดเตรียมการจัดส่ง ยังไม่เตรียมของ จึงไม่นับในหน้านี้' + (pre ? `<br>ในนี้ Pre-order ${fmt(pre)} ออเดอร์` : ''))}
+      ${metric('ชิ้นรอขนส่งเข้ารับ', fmt(tot), `สินค้าจริง ${fmt(L.length)} รายการ · ${fmt(BL.length)} ตะกร้า`, 'นับเป็นชิ้นจริง ชุดโปรแตกเป็นสินค้าในชุดแล้ว')}
+      ${metric('สต็อกไม่พอ', short.length ? `<span style="color:var(--bad)">${fmt(short.length)}</span>` : '0', short.length ? 'รายการ เหลือหลังส่งติดลบ' : noStock.length ? `พอ · ยังไม่ตั้งสต็อก ${fmt(noStock.length)} รายการ` : 'พอทุกรายการ', 'สต็อกตอนนี้ − ชิ้นรอขนส่งเข้ารับ ติดลบ<br>นับเฉพาะสินค้าที่ตั้งสต็อกตั้งต้นแล้ว (หน้าสต็อก)')}
       ${metric('ข้อมูลจากไฟล์', isToday || !at ? atTxt : `<span style="color:var(--warn)">${atTxt}</span>`, isToday ? 'ไฟล์คำสั่งซื้อที่อัปล่าสุด' : 'ยังไม่ได้อัปไฟล์ของวันนี้', 'ตัวเลขหน้านี้มาจากไฟล์คำสั่งซื้อที่อัปล่าสุด<br>ก่อนนับของ: export ไฟล์คำสั่งซื้อจาก Seller Center แล้วอัปที่เมนูอัปโหลด')}</section>
-    <section class="panel td-panel"><div class="panel-h"><h2>สินค้าที่ต้องส่ง ${tip('แตกทุกออเดอร์ที่ต้องส่งเป็นสินค้าจริง<br>สต็อกตอนนี้ = ตั้งต้น + รับเข้า − ส่งออกแล้ว (หน้าสต็อก)<br>เหลือหลังส่ง = สต็อกตอนนี้ − รวมต้องส่ง = ของบนชั้นที่ควรเหลือ หลังแพ็กครบทุกออเดอร์')}</h2>
-      <span style="flex:1"></span>${oldChip}<button type="button" class="btn" id="tdPrint"${L.length ? '' : ' disabled'}>พิมพ์ใบนับ</button></div>
-      <div class="print-h">ใบนับสินค้า · ต้องส่ง ${fmt(ords(cur))} ออเดอร์ ${fmt(A.t)} ชิ้น · ข้อมูลจากไฟล์ ${at ? dLong(ymd(at)) + ' ' + hm : '—'}</div>
-      ${L.length ? `<div class="wide"><table class="ui-table tbl prod td-tbl" data-no-sort data-no-page><thead><tr><th class="num">#</th><th class="l">สินค้าจริง</th>
-        <th class="num">รอจัดส่ง ${tip('ยังไม่กดจัดเตรียมการจัดส่ง')}</th><th class="num">รอขนส่งเข้ารับ ${tip('กดจัดส่งแล้ว รอขนส่งมารับ')}</th><th class="num">รวมต้องส่ง</th>
-        <th class="num">สต็อกตอนนี้ ${tip('ตั้งต้น + รับเข้า − ส่งออกแล้ว · ยังไม่หักออเดอร์ที่ต้องส่ง')}</th><th class="num">เหลือหลังส่ง ${tip('สต็อกตอนนี้ − รวมต้องส่ง<br>ไว้เทียบกับของที่นับได้บนชั้น หลังแพ็กครบ')}</th><th class="num print-only">นับได้</th></tr></thead><tbody>
-        ${L.map((x, i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l">${name(x)}</td><td class="num">${x.wait ? fmt(x.wait) : dash}</td><td class="num">${x.rts ? fmt(x.rts) : dash}</td><td class="num"><b>${fmt(x.t)}</b></td>
+    <section class="panel td-panel"><div class="panel-h"><h2 id="tdH"></h2>
+      <div class="ui-presets" id="tdTabs"><button type="button" data-t="item">สินค้าจริง</button><button type="button" data-t="basket">ตะกร้า</button></div>
+      <span style="flex:1"></span>${oldChip}<button type="button" class="btn" id="tdPrint"${L.length ? '' : ' disabled'}>พิมพ์</button></div>
+      <div class="print-h" id="tdPh"></div><div id="tdBody"></div></section>`;
+  const empty = `<div class="empty-note">ไม่มีออเดอร์รอขนส่งเข้ารับ ตามไฟล์คำสั่งซื้อที่อัปล่าสุด${at ? '' : ' (ยังไม่เคยอัปไฟล์คำสั่งซื้อ)'}</div>`;
+  const itemTbl = () => `<div class="wide"><table class="ui-table tbl prod td-tbl" data-no-sort data-no-page><thead><tr><th class="num">#</th><th class="l">สินค้าจริง</th>
+        <th class="num">รอขนส่งเข้ารับ (ชิ้น) ${tip('ชิ้นจริงจากออเดอร์ที่แพ็กแล้ว รอขนส่งมารับ<br>ชุดโปรแตกเป็นสินค้าในชุดแล้ว')}</th>
+        <th class="num">สต็อกตอนนี้ ${tip('ตั้งต้น + รับเข้า − ส่งออกแล้ว · ยังไม่หักออเดอร์ที่รอขนส่งเข้ารับ')}</th><th class="num">เหลือหลังส่ง ${tip('สต็อกตอนนี้ − รอขนส่งเข้ารับ<br>= ของบนชั้นที่ควรนับได้ (ของที่แพ็กแล้วออกจากชั้นไปแล้ว)')}</th><th class="num print-only">นับได้</th></tr></thead><tbody>
+        ${L.map((x, i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l">${name(x)}</td><td class="num"><b>${fmt(x.t)}</b></td>
           <td class="num">${x.oh == null ? `<a href="#stock" class="ui-muted has-tip" data-tip="ยังไม่ได้กรอกสต็อกตั้งต้น · กดเพื่อไปหน้าสต็อก">ยังไม่ตั้ง</a>` : fmt(x.oh)}</td>
           <td class="num">${x.after == null ? dash : x.after < 0 ? `<span class="ui-chip dn">ขาด ${fmt(-x.after)}</span>` : `<b>${fmt(x.after)}</b>`}</td><td class="num print-only"></td></tr>`).join('')}
-        </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(L.length)} รายการ</td><td class="num">${fmt(A.wait)}</td><td class="num">${fmt(A.rts)}</td><td class="num">${fmt(A.t)}</td><td></td><td></td><td class="print-only"></td></tr></tfoot></table></div>`
-        : `<div class="empty-note">ไม่มีออเดอร์ที่ต้องส่ง ตามไฟล์คำสั่งซื้อที่อัปล่าสุด${at ? '' : ' (ยังไม่เคยอัปไฟล์คำสั่งซื้อ)'}</div>`}</section>`;
+        </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(L.length)} รายการ</td><td class="num">${fmt(tot)}</td><td></td><td></td><td class="print-only"></td></tr></tfoot></table></div>`;
+  const nums = x => `<td class="num">${fmt(x.o.size)}</td><td class="num"><b>${fmt(x.sets)}</b></td>`;
+  const bkTbl = () => `<div class="wide"><table class="ui-table tbl prod td-bk" data-no-sort data-no-page><thead><tr><th class="num">#</th><th class="l">ตะกร้า / ตัวเลือก ${tip('ตะกร้า = สินค้าที่ลงขายใน TikTok<br>ตะกร้าที่มีหลายตัวเลือก แสดงแต่ละตัวเลือกต่อท้าย (ชื่อจากช่อง Variation · รหัสคือ Seller SKU)')}</th>
+      <th class="num">ออเดอร์</th><th class="num">รอขนส่งเข้ารับ (ชุด) ${tip('จำนวนตามไฟล์คำสั่งซื้อ (Quantity)<br>ตะกร้าโปรนับเป็นชุด เช่น ซื้อ 3 แถม 1 = 1 ชุด')}</th></tr></thead><tbody>
+      ${BL.map((b, i) => `<tr class="bk-row"><td class="num ui-muted">${i + 1}</td><td class="l"><span class="pn ui-trunc"><b>${esc(b.name)}</b></span>${b.sk.length === 1 ? `<small class="ui-code">${esc(b.sk[0].sku)}</small>` : `<small class="ui-muted">${b.sk.length} ตัวเลือก</small>`}</td>${nums(b)}</tr>`
+        + (b.sk.length > 1 ? b.sk.map(k => `<tr class="bk-sub"><td></td><td class="l"><span class="pn ui-trunc">${esc(k.v || k.sku)}</span>${k.v ? `<small class="ui-code">${esc(k.sku)}</small>` : ''}</td>${nums(k)}</tr>`).join('') : '')).join('')}
+      </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(BL.length)} ตะกร้า</td><td class="num">${fmt(ords(cur))}</td><td class="num">${fmt(setsTot)}</td></tr></tfoot></table></div>`;
+  const drawTd = () => {
+    const bk = TD.tab === 'basket';
+    document.getElementById('tdH').innerHTML = bk ? `รอขนส่งเข้ารับ ตามตะกร้า ${tip('แต่ละตะกร้า / ตัวเลือก แพ็กแล้วกี่ชุด รอขนส่งมารับ')}` : `รอขนส่งเข้ารับ ตามสินค้า ${tip('แตกออเดอร์ที่รอขนส่งเข้ารับเป็นสินค้าจริง<br>สต็อกตอนนี้ = ตั้งต้น + รับเข้า − ส่งออกแล้ว (หน้าสต็อก)<br>เหลือหลังส่ง = ของบนชั้นที่ควรนับได้')}`;
+    document.getElementById('tdPh').textContent = bk ? `รอขนส่งเข้ารับ ตามตะกร้า · ${fmt(ords(cur))} ออเดอร์ ${fmt(setsTot)} ชุด · ข้อมูลจากไฟล์ ${fileTxt}` : `ใบนับสินค้า · รอขนส่งเข้ารับ ${fmt(ords(cur))} ออเดอร์ ${fmt(tot)} ชิ้น · ข้อมูลจากไฟล์ ${fileTxt}`;
+    document.getElementById('tdBody').innerHTML = !L.length ? empty : bk ? bkTbl() : itemTbl();
+    document.querySelectorAll('#tdTabs button').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === TD.tab)); pinSoon();
+  };
+  document.querySelectorAll('#tdTabs button').forEach(b => b.onclick = () => { TD.tab = b.dataset.t; drawTd(); }); drawTd();
   const pb = document.getElementById('tdPrint'); if (pb) pb.onclick = () => window.print();
 }
 
@@ -548,7 +573,7 @@ async function route(quiet) {
   catch (e) { if (!stale(tok)) el.innerHTML = `<div class="panel empty-note" style="color:var(--bad)">โหลดไม่สำเร็จ: ${esc(e.message)}</div>`; }
 }
 // ===== เมนูซ้าย + แถบบน แบบ Deesay: โลโก้ + ชื่อรอง + ปุ่มย่อเมนู · การ์ดสถานะข้อมูลท้ายเมนู · ปุ่ม Updated ข้างชื่อหน้า =====
-const PAGE_SUB = { today: 'ออเดอร์ที่ขนส่งยังไม่รับ · สินค้าที่ต้องหยิบ · สต็อกเหลือหลังส่ง', overview: 'ยอดขาย = ออเดอร์ที่ส่งสำเร็จ · นับตามวันที่สั่งซื้อ', creators: 'ยอดขายผ่าน Creator · ส่งสำเร็จ · กดชื่อเพื่อดูรายละเอียด', products: 'ของที่ออกจากคลัง · นับตามวันที่ส่ง',
+const PAGE_SUB = { today: 'ออเดอร์ที่แพ็กแล้ว รอขนส่งเข้ารับ · สินค้า · สต็อกเหลือหลังส่ง', overview: 'ยอดขาย = ออเดอร์ที่ส่งสำเร็จ · นับตามวันที่สั่งซื้อ', creators: 'ยอดขายผ่าน Creator · ส่งสำเร็จ · กดชื่อเพื่อดูรายละเอียด', products: 'ของที่ออกจากคลัง · นับตามวันที่ส่ง',
   items: 'ยอดแยกรายสินค้า + เงินที่ได้รับจริง · สำหรับบัญชี', stock: 'คงเหลือ = ตั้งต้น + รับเข้า − ส่งออก · ราคา RSP', money: 'ตามรายงานรับเงิน · นับตามวันที่เงินเข้า', upload: 'ไฟล์คำสั่งซื้อ + รายงานรับเงิน จาก TikTok Seller Center' };
 const APP_NAME = (window.APP && APP.NAME) || 'ระบบวิเคราะห์ยอดขาย', APP_SUB = (window.APP && APP.SUBTITLE) || 'Sales & Marketing';
 document.title = APP_NAME;
