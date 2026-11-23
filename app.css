@@ -234,13 +234,22 @@ body.sb-mini .sb-foot { flex-direction:column; } body.sb-mini .sb-btn { padding:
 /* (2026-11-23) หน้าต้องส่งวันนี้ + ใบนับสำหรับพิมพ์ (คอลัมน์ "นับได้" ว่างไว้ให้เขียน · ซ่อนเมนู / การ์ด / ปุ่ม) */
 .td-panel .panel-h { gap:10px; flex-wrap:wrap; } .td-old { cursor:default; }
 .print-only, .print-h { display:none; }
-@media (max-width:700px) {   /* มือถือ: ซ่อนคอลัมน์แยกรอจัดส่ง / รอขนส่งเข้ารับ ให้ตารางพอดีจอ ไม่ต้องเลื่อนข้าง (ยอดแยกดูได้ที่การ์ดด้านบน) */
-  .td-tbl { min-width:0 !important; }
-  .td-tbl th:nth-child(3), .td-tbl td:nth-child(3), .td-tbl th:nth-child(4), .td-tbl td:nth-child(4) { display:none; }
-  .tbl.prod.td-tbl th:first-child, .tbl.prod.td-tbl td:first-child { width:26px; padding-left:2px; padding-right:2px; }
-  .tbl.prod.td-tbl th:nth-child(2), .tbl.prod.td-tbl td:nth-child(2) { width:auto !important; padding-right:4px; }
-  .tbl.prod.td-tbl th:nth-child(n+5), .tbl.prod.td-tbl td:nth-child(n+5) { width:60px; padding-left:3px; padding-right:3px; }
-  .td-tbl th { white-space:normal !important; line-height:1.3; } .td-tbl .ui-trunc { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+/* แท็บตะกร้า: แถวตะกร้าตัวหนา · แถว SKU ในตะกร้าย่อหน้า + พื้นสีอ่อน ให้เห็นว่าอยู่ในตะกร้าเดียวกัน */
+.td-bk tr.bk-sub td { background:rgba(148,163,184,.08); padding-top:7px; padding-bottom:7px; font-size:13px; }
+.td-bk tr.bk-sub td.l { padding-left:30px; } .td-bk tr.bk-sub .pn { color:var(--text2); }
+.td-bk tr.bk-sub td.l::before { content:''; position:absolute; margin:-1px 0 0 -14px; width:8px; height:8px; border-left:1px solid var(--text3); border-bottom:1px solid var(--text3); opacity:.6; }
+/* คอลัมน์ตัวเลขกว้างคงที่เท่ากัน · ชื่อใช้พื้นที่ที่เหลือ (คอลัมน์น้อยจึงไม่ห่างกันเกิน) */
+.tbl.prod.td-tbl, .tbl.prod.td-bk { min-width:0; }
+.tbl.prod.td-tbl th:nth-child(2), .tbl.prod.td-tbl td:nth-child(2), .tbl.prod.td-bk th:nth-child(2), .tbl.prod.td-bk td:nth-child(2) { width:auto; }
+.tbl.prod.td-tbl th:nth-child(n+3), .tbl.prod.td-tbl td:nth-child(n+3), .tbl.prod.td-bk th:nth-child(n+3), .tbl.prod.td-bk td:nth-child(n+3) { width:170px; }
+@media (max-width:700px) {   /* มือถือ: ตัวเลขช่องแคบ · ชื่อยาวตัดที่ 2–3 บรรทัด · พอดีจอ ไม่ต้องเลื่อนข้าง */
+  .tbl.prod.td-tbl th:first-child, .tbl.prod.td-tbl td:first-child, .tbl.prod.td-bk th:first-child, .tbl.prod.td-bk td:first-child { width:26px; padding-left:2px; padding-right:2px; }
+  .tbl.prod.td-tbl th:nth-child(2), .tbl.prod.td-tbl td:nth-child(2), .tbl.prod.td-bk th:nth-child(2), .tbl.prod.td-bk td:nth-child(2) { padding-right:4px; }
+  .tbl.prod.td-tbl th:nth-child(n+3), .tbl.prod.td-tbl td:nth-child(n+3), .tbl.prod.td-bk th:nth-child(n+3), .tbl.prod.td-bk td:nth-child(n+3) { width:68px; padding-left:3px; padding-right:3px; }
+  .td-tbl th, .td-bk th { white-space:normal !important; line-height:1.3; }
+  .td-tbl .pn.ui-trunc, .td-bk .pn.ui-trunc { white-space:normal; display:-webkit-box !important; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .td-bk .pn.ui-trunc { -webkit-line-clamp:3; }
+  .td-bk tr.bk-sub td.l { padding-left:18px; }
   .td-hero .md { white-space:normal; }
 }
 @media print {
@@ -253,9 +262,11 @@ body.sb-mini .sb-foot { flex-direction:column; } body.sb-mini .sb-btn { padding:
   .tbl.prod { min-width:0 !important; } .wide { overflow:visible !important; }
   .ui-table th, .ui-table td { color:#000 !important; border-bottom:1px solid #bbb !important; padding-top:7px !important; padding-bottom:7px !important; }
   .td-tbl th.print-only, .td-tbl td.print-only { display:table-cell; border:1px solid #888 !important; }
-  .td-tbl .pr-i { display:none !important; } .td-tbl a, .td-tbl .has-tip { color:#000 !important; text-decoration:none !important; border:0 !important; }
-  .td-tbl th { white-space:normal !important; font-size:12px !important; line-height:1.3; transform:none !important; box-shadow:none !important; }
-  .td-tbl th:nth-child(2), .td-tbl td:nth-child(2) { width:34% !important; }
+  .td-tbl .pr-i, .td-bk .pr-i, .td-panel .ui-presets { display:none !important; } .td-tbl a, .td-tbl .has-tip { color:#000 !important; text-decoration:none !important; border:0 !important; }
+  .td-bk { min-width:0 !important; } .td-bk tr.bk-sub td { background:#f3f5f8 !important; }
+  .td-tbl .ui-trunc, .td-bk .ui-trunc { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; display:block !important; }
+  .td-tbl th, .td-bk th { white-space:normal !important; font-size:12px !important; line-height:1.3; transform:none !important; box-shadow:none !important; }
+  .tbl.prod.td-tbl th:nth-child(n+3), .tbl.prod.td-tbl td:nth-child(n+3), .tbl.prod.td-bk th:nth-child(n+3), .tbl.prod.td-bk td:nth-child(n+3) { width:105px !important; }
   .ui-chip.dn { background:none !important; color:#000 !important; font-weight:700; }
   tr { break-inside:avoid; }
 }
