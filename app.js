@@ -439,8 +439,8 @@ async function exportItems(btn, names, rsp, L, A, rev, BL, M) {
 }
 
 // ===== ต้องส่งวันนี้: ออเดอร์ที่ขนส่งยังไม่รับ (ตามไฟล์คำสั่งซื้อล่าสุด) → สินค้าจริงที่ต้องหยิบ → สต็อกเหลือหลังส่ง · ไว้ให้ทีมนับของ =====
-const TD = { tab: 'item' };   // แท็บที่เลือกในหน้าต้องส่งวันนี้ (จำไว้ระหว่างสลับหน้า)
-// นับเฉพาะ "รอขนส่งเข้ารับ" (กดจัดเตรียมการจัดส่งแล้ว = แพ็กแล้ว ของออกจากชั้นแล้ว) · รอจัดส่ง = ยังไม่เตรียมของ แสดงแค่จำนวนออเดอร์ในการ์ด
+// ===== ต้องส่งวันนี้: นับเฉพาะ "รอขนส่งเข้ารับ" (กดจัดเตรียมการจัดส่งแล้ว = แพ็กแล้ว ของออกจากชั้นแล้ว) =====
+// รอจัดส่ง = ยังไม่เตรียมของ แสดงแค่จำนวนออเดอร์ในการ์ด · 2 ตาราง ซ้าย = สินค้าจริง (ไว้นับสต็อก) · ขวา = ตะกร้า / ตัวเลือก (กี่ชุด)
 async function pageToday(el) {
   const tok = ROUTE_TOK;
   const [T, TS, ST, U] = await Promise.all([sel('v_to_ship', false), sel('v_to_ship_sets', false), sel('v_stock', false), DB.select('uploads', 'uploaded_at', q => q.eq('kind', 'orders').order('uploaded_at', { ascending: false }).limit(1)).catch(() => [])]);
@@ -458,45 +458,45 @@ async function pageToday(el) {
   const oldD = old.map(r => r.d).filter(Boolean).sort();
   const oldChip = old.length ? `<span class="ui-badge warn has-tip td-old" data-tip="${esc(`ออเดอร์ที่ไฟล์เก่าบอกว่ารอขนส่งเข้ารับ แต่ไม่อยู่ในไฟล์รอบล่าสุด สถานะอาจเปลี่ยนแล้ว (ส่งไปแล้ว / ยกเลิก)\nสั่งวันที่ ${dLong(oldD[0])}${oldD[0] !== oldD[oldD.length - 1] ? ' – ' + dLong(oldD[oldD.length - 1]) : ''}\nวิธีแก้: export ไฟล์คำสั่งซื้อที่ครอบคลุมวันที่สั่งนี้ แล้วอัปอีกครั้ง`)}">ค้างจากไฟล์เก่า ${fmt(ords(old))} ออเดอร์ · ไม่นับรวม</span>` : '';
   const name = x => x.name && x.name !== x.k ? `<span class="pn ui-trunc">${esc(x.name)}</span><small class="ui-code">${esc(x.k)}</small>` : `<span class="pn ui-code">${esc(x.k)}</span>`;
-  // ตามตะกร้า: ตะกร้า (ชื่อสินค้าใน TikTok) → SKU ในตะกร้า · ชุด = จำนวนในไฟล์คำสั่งซื้อ
+  // ตะกร้า (ชื่อสินค้าใน TikTok) → ตัวเลือกในตะกร้า · ชุด = จำนวนในไฟล์คำสั่งซื้อ
   const BK = {};
   TS.filter(r => r.in_last && r.rts).forEach(r => { const b = BK[r.basket] = BK[r.basket] || { name: r.basket, o: new Set(), sets: 0, sk: {} };
     const k = b.sk[r.sku] = b.sk[r.sku] || { sku: r.sku, v: r.variation, o: new Set(), sets: 0 };
     [b, k].forEach(x => { x.o.add(r.order_id); x.sets += +r.sets; }); });
   const BL = Object.values(BK).map(b => ({ ...b, sk: Object.values(b.sk).sort((x, y) => y.sets - x.sets || (x.sku < y.sku ? -1 : 1)) })).sort((x, y) => y.sets - x.sets || (x.name < y.name ? -1 : 1));
   const setsTot = BL.reduce((a, b) => a + b.sets, 0);
+  const empty = `<div class="empty-note">ไม่มีออเดอร์รอขนส่งเข้ารับ ตามไฟล์คำสั่งซื้อที่อัปล่าสุด${at ? '' : ' (ยังไม่เคยอัปไฟล์คำสั่งซื้อ)'}</div>`;
+  const itemTbl = `<div class="wide"><table class="ui-table tbl prod td-tbl" data-no-sort data-no-page><thead><tr><th class="num">#</th><th class="l">สินค้าจริง</th>
+      <th class="num">ชิ้น ${tip('ชิ้นจริงจากออเดอร์ที่แพ็กแล้ว รอขนส่งมารับ<br>ชุดโปรแตกเป็นสินค้าในชุดแล้ว')}</th>
+      <th class="num">สต็อกตอนนี้ ${tip('ตั้งต้น + รับเข้า − ส่งออกแล้ว · ยังไม่หักออเดอร์ที่รอขนส่งเข้ารับ')}</th><th class="num">เหลือหลังส่ง ${tip('สต็อกตอนนี้ − ชิ้นที่รอขนส่งเข้ารับ<br>= ของบนชั้นที่ควรนับได้ (ของที่แพ็กแล้วออกจากชั้นไปแล้ว)')}</th><th class="num print-only">นับได้</th></tr></thead><tbody>
+      ${L.map((x, i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l">${name(x)}</td><td class="num"><b>${fmt(x.t)}</b></td>
+        <td class="num">${x.oh == null ? `<a href="#stock" class="ui-muted has-tip" data-tip="ยังไม่ได้กรอกสต็อกตั้งต้น · กดเพื่อไปหน้าสต็อก">ยังไม่ตั้ง</a>` : fmt(x.oh)}</td>
+        <td class="num">${x.after == null ? dash : x.after < 0 ? `<span class="ui-chip dn">ขาด ${fmt(-x.after)}</span>` : `<b>${fmt(x.after)}</b>`}</td><td class="num print-only"></td></tr>`).join('')}
+      </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(L.length)} รายการ</td><td class="num">${fmt(tot)}</td><td></td><td></td><td class="print-only"></td></tr></tfoot></table></div>`;
+  const nums = x => `<td class="num">${fmt(x.o.size)}</td><td class="num"><b>${fmt(x.sets)}</b></td>`;
+  const bkTbl = `<div class="wide"><table class="ui-table tbl prod td-bk" data-no-sort data-no-page><thead><tr><th class="num">#</th><th class="l">ตะกร้า / ตัวเลือก ${tip('ตะกร้า = สินค้าที่ลงขายใน TikTok<br>ตะกร้าที่มีหลายตัวเลือก แสดงแต่ละตัวเลือกต่อท้าย (ชื่อจากช่อง Variation · รหัสคือ Seller SKU)')}</th>
+      <th class="num">ออเดอร์</th><th class="num">ชุด ${tip('จำนวนตามไฟล์คำสั่งซื้อ (Quantity)<br>ตะกร้าโปรนับเป็นชุด เช่น ซื้อ 3 แถม 1 = 1 ชุด')}</th></tr></thead><tbody>
+      ${BL.map((b, i) => `<tr class="bk-row"><td class="num ui-muted">${i + 1}</td><td class="l"><span class="pn ui-trunc"><b>${esc(b.name)}</b></span>${b.sk.length === 1 ? `<small class="ui-code">${esc(b.sk[0].sku)}</small>` : `<small class="ui-muted">${b.sk.length} ตัวเลือก</small>`}</td>${nums(b)}</tr>`
+        + (b.sk.length > 1 ? b.sk.map(k => `<tr class="bk-sub"><td></td><td class="l"><span class="pn ui-trunc">${esc(k.v || k.sku)}</span>${k.v ? `<small class="ui-code">${esc(k.sku)}</small>` : ''}</td>${nums(k)}</tr>`).join('') : '')).join('')}
+      </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(BL.length)} ตะกร้า</td><td class="num">${fmt(ords(cur))}</td><td class="num">${fmt(setsTot)}</td></tr></tfoot></table></div>`;
   el.innerHTML = `<section class="ui-metrics hero td-hero">
       ${metric('ออเดอร์รอขนส่งเข้ารับ', fmt(ords(cur)), waitO ? `ยังไม่เตรียมของอีก ${fmt(waitO)} ออเดอร์ (ไม่นับ)` : 'ไม่มีออเดอร์ที่ยังไม่เตรียมของ', 'ออเดอร์ที่กดจัดเตรียมการจัดส่งแล้ว (มี RTS Time) แต่ขนส่งยังไม่มารับ (ยังไม่มี Shipped Time)<br>รอจัดส่ง = ยังไม่กดจัดเตรียมการจัดส่ง ยังไม่เตรียมของ จึงไม่นับในหน้านี้' + (pre ? `<br>ในนี้ Pre-order ${fmt(pre)} ออเดอร์` : ''))}
       ${metric('ชิ้นรอขนส่งเข้ารับ', fmt(tot), `สินค้าจริง ${fmt(L.length)} รายการ · ${fmt(BL.length)} ตะกร้า`, 'นับเป็นชิ้นจริง ชุดโปรแตกเป็นสินค้าในชุดแล้ว')}
       ${metric('สต็อกไม่พอ', short.length ? `<span style="color:var(--bad)">${fmt(short.length)}</span>` : '0', short.length ? 'รายการ เหลือหลังส่งติดลบ' : noStock.length ? `พอ · ยังไม่ตั้งสต็อก ${fmt(noStock.length)} รายการ` : 'พอทุกรายการ', 'สต็อกตอนนี้ − ชิ้นรอขนส่งเข้ารับ ติดลบ<br>นับเฉพาะสินค้าที่ตั้งสต็อกตั้งต้นแล้ว (หน้าสต็อก)')}
       ${metric('ข้อมูลจากไฟล์', isToday || !at ? atTxt : `<span style="color:var(--warn)">${atTxt}</span>`, isToday ? 'ไฟล์คำสั่งซื้อที่อัปล่าสุด' : 'ยังไม่ได้อัปไฟล์ของวันนี้', 'ตัวเลขหน้านี้มาจากไฟล์คำสั่งซื้อที่อัปล่าสุด<br>ก่อนนับของ: export ไฟล์คำสั่งซื้อจาก Seller Center แล้วอัปที่เมนูอัปโหลด')}</section>
-    <section class="panel td-panel"><div class="panel-h"><h2 id="tdH"></h2>
-      <div class="ui-presets" id="tdTabs"><button type="button" data-t="item">สินค้าจริง</button><button type="button" data-t="basket">ตะกร้า</button></div>
-      <span style="flex:1"></span>${oldChip}<button type="button" class="btn" id="tdPrint"${L.length ? '' : ' disabled'}>พิมพ์</button></div>
-      <div class="print-h" id="tdPh"></div><div id="tdBody"></div></section>`;
-  const empty = `<div class="empty-note">ไม่มีออเดอร์รอขนส่งเข้ารับ ตามไฟล์คำสั่งซื้อที่อัปล่าสุด${at ? '' : ' (ยังไม่เคยอัปไฟล์คำสั่งซื้อ)'}</div>`;
-  const itemTbl = () => `<div class="wide"><table class="ui-table tbl prod td-tbl" data-no-sort data-no-page><thead><tr><th class="num">#</th><th class="l">สินค้าจริง</th>
-        <th class="num">รอขนส่งเข้ารับ (ชิ้น) ${tip('ชิ้นจริงจากออเดอร์ที่แพ็กแล้ว รอขนส่งมารับ<br>ชุดโปรแตกเป็นสินค้าในชุดแล้ว')}</th>
-        <th class="num">สต็อกตอนนี้ ${tip('ตั้งต้น + รับเข้า − ส่งออกแล้ว · ยังไม่หักออเดอร์ที่รอขนส่งเข้ารับ')}</th><th class="num">เหลือหลังส่ง ${tip('สต็อกตอนนี้ − รอขนส่งเข้ารับ<br>= ของบนชั้นที่ควรนับได้ (ของที่แพ็กแล้วออกจากชั้นไปแล้ว)')}</th><th class="num print-only">นับได้</th></tr></thead><tbody>
-        ${L.map((x, i) => `<tr><td class="num ui-muted">${i + 1}</td><td class="l">${name(x)}</td><td class="num"><b>${fmt(x.t)}</b></td>
-          <td class="num">${x.oh == null ? `<a href="#stock" class="ui-muted has-tip" data-tip="ยังไม่ได้กรอกสต็อกตั้งต้น · กดเพื่อไปหน้าสต็อก">ยังไม่ตั้ง</a>` : fmt(x.oh)}</td>
-          <td class="num">${x.after == null ? dash : x.after < 0 ? `<span class="ui-chip dn">ขาด ${fmt(-x.after)}</span>` : `<b>${fmt(x.after)}</b>`}</td><td class="num print-only"></td></tr>`).join('')}
-        </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(L.length)} รายการ</td><td class="num">${fmt(tot)}</td><td></td><td></td><td class="print-only"></td></tr></tfoot></table></div>`;
-  const nums = x => `<td class="num">${fmt(x.o.size)}</td><td class="num"><b>${fmt(x.sets)}</b></td>`;
-  const bkTbl = () => `<div class="wide"><table class="ui-table tbl prod td-bk" data-no-sort data-no-page><thead><tr><th class="num">#</th><th class="l">ตะกร้า / ตัวเลือก ${tip('ตะกร้า = สินค้าที่ลงขายใน TikTok<br>ตะกร้าที่มีหลายตัวเลือก แสดงแต่ละตัวเลือกต่อท้าย (ชื่อจากช่อง Variation · รหัสคือ Seller SKU)')}</th>
-      <th class="num">ออเดอร์</th><th class="num">รอขนส่งเข้ารับ (ชุด) ${tip('จำนวนตามไฟล์คำสั่งซื้อ (Quantity)<br>ตะกร้าโปรนับเป็นชุด เช่น ซื้อ 3 แถม 1 = 1 ชุด')}</th></tr></thead><tbody>
-      ${BL.map((b, i) => `<tr class="bk-row"><td class="num ui-muted">${i + 1}</td><td class="l"><span class="pn ui-trunc"><b>${esc(b.name)}</b></span>${b.sk.length === 1 ? `<small class="ui-code">${esc(b.sk[0].sku)}</small>` : `<small class="ui-muted">${b.sk.length} ตัวเลือก</small>`}</td>${nums(b)}</tr>`
-        + (b.sk.length > 1 ? b.sk.map(k => `<tr class="bk-sub"><td></td><td class="l"><span class="pn ui-trunc">${esc(k.v || k.sku)}</span>${k.v ? `<small class="ui-code">${esc(k.sku)}</small>` : ''}</td>${nums(k)}</tr>`).join('') : '')).join('')}
-      </tbody><tfoot><tr><td></td><td class="l">รวม ${fmt(BL.length)} ตะกร้า</td><td class="num">${fmt(ords(cur))}</td><td class="num">${fmt(setsTot)}</td></tr></tfoot></table></div>`;
-  const drawTd = () => {
-    const bk = TD.tab === 'basket';
-    document.getElementById('tdH').innerHTML = bk ? `รอขนส่งเข้ารับ ตามตะกร้า ${tip('แต่ละตะกร้า / ตัวเลือก แพ็กแล้วกี่ชุด รอขนส่งมารับ')}` : `รอขนส่งเข้ารับ ตามสินค้า ${tip('แตกออเดอร์ที่รอขนส่งเข้ารับเป็นสินค้าจริง<br>สต็อกตอนนี้ = ตั้งต้น + รับเข้า − ส่งออกแล้ว (หน้าสต็อก)<br>เหลือหลังส่ง = ของบนชั้นที่ควรนับได้')}`;
-    document.getElementById('tdPh').textContent = bk ? `รอขนส่งเข้ารับ ตามตะกร้า · ${fmt(ords(cur))} ออเดอร์ ${fmt(setsTot)} ชุด · ข้อมูลจากไฟล์ ${fileTxt}` : `ใบนับสินค้า · รอขนส่งเข้ารับ ${fmt(ords(cur))} ออเดอร์ ${fmt(tot)} ชิ้น · ข้อมูลจากไฟล์ ${fileTxt}`;
-    document.getElementById('tdBody').innerHTML = !L.length ? empty : bk ? bkTbl() : itemTbl();
-    document.querySelectorAll('#tdTabs button').forEach(b => b.setAttribute('aria-pressed', b.dataset.t === TD.tab)); pinSoon();
-  };
-  document.querySelectorAll('#tdTabs button').forEach(b => b.onclick = () => { TD.tab = b.dataset.t; drawTd(); }); drawTd();
-  const pb = document.getElementById('tdPrint'); if (pb) pb.onclick = () => window.print();
+    ${old.length ? `<div class="td-warn">${oldChip}</div>` : ''}
+    <div class="td-grid">
+      <section class="panel td-panel td-p-item"><div class="panel-h"><h2>สินค้าจริง · ไว้นับสต็อก ${tip('แตกออเดอร์ที่รอขนส่งเข้ารับเป็นสินค้าจริง (ชุดโปรแตกเป็นสินค้าในชุดแล้ว)<br>สต็อกตอนนี้ = ตั้งต้น + รับเข้า − ส่งออกแล้ว (หน้าสต็อก)<br>เหลือหลังส่ง = ของบนชั้นที่ควรนับได้')}</h2>
+        <span style="flex:1"></span><button type="button" class="btn td-print" data-p="item"${L.length ? '' : ' disabled'}>พิมพ์ใบนับ</button></div>
+        <div class="print-h">ใบนับสินค้า · รอขนส่งเข้ารับ ${fmt(ords(cur))} ออเดอร์ ${fmt(tot)} ชิ้น · ข้อมูลจากไฟล์ ${fileTxt}</div>${L.length ? itemTbl : empty}</section>
+      <section class="panel td-panel td-p-basket"><div class="panel-h"><h2>ตะกร้า / ตัวเลือก ${tip('แต่ละตะกร้า / ตัวเลือก แพ็กแล้วกี่ชุด รอขนส่งมารับ')}</h2>
+        <span style="flex:1"></span><button type="button" class="btn td-print" data-p="basket"${BL.length ? '' : ' disabled'}>พิมพ์</button></div>
+        <div class="print-h">รอขนส่งเข้ารับ ตามตะกร้า · ${fmt(ords(cur))} ออเดอร์ ${fmt(setsTot)} ชุด · ข้อมูลจากไฟล์ ${fileTxt}</div>${BL.length ? bkTbl : empty}</section>
+    </div>`;
+  pinSoon();
+  // พิมพ์ทีละตาราง: ตารางที่ไม่ได้กดพิมพ์จะถูกซ่อนตอนพิมพ์
+  el.querySelectorAll('.td-print').forEach(btn => btn.onclick = () => { document.body.dataset.print = btn.dataset.p; window.print(); });
+  window.onafterprint = () => { delete document.body.dataset.print; };
 }
 
 // ===== สต็อก + ราคา RSP: รายการสินค้าจริงทุกตัวที่เคยขาย (ดึงให้เอง) · กรอกชื่อ / RSP / สต็อกตั้งต้นในตาราง · บันทึกรับเข้า =====
@@ -531,12 +531,12 @@ async function pageStock(el) {
     const bad = rowsOut.find(r => (r.opening_stock == null) !== (r.opening_date == null));
     if (bad) { await uiAlert('กรอกสต็อกตั้งต้นและวันที่นับคู่กัน', { text: `สินค้า ${bad.sku}: ต้องมีทั้งจำนวนตั้งต้นและวันที่นับ หรือเว้นว่างทั้งคู่`, tone: 'bad' }); return; }
     btn.disabled = true; btn.textContent = 'กำลังบันทึก…';
-    try { await DB.upsert('products', rowsOut, 'sku'); await DB.rpc('refresh_sales').catch(() => {}); clearCache(); route(); } catch (x) { btn.disabled = false; btn.textContent = 'บันทึก'; uiAlert('บันทึกไม่สำเร็จ', { text: x.message, tone: 'bad' }); }
+    try { await DB.upsert('products', rowsOut, 'sku'); clearCache(); route(); loadFreshness(true); } catch (x) { btn.disabled = false; btn.textContent = 'บันทึก'; uiAlert('บันทึกไม่สำเร็จ', { text: x.message, tone: 'bad' }); }
   };
   document.getElementById('siSave').onclick = async () => {
     const sku = siSku.value, qty = +siQty.value, msg = document.getElementById('siMsg');
     if (!sku || !(qty > 0)) { msg.textContent = 'กรุณาเลือกสินค้าและกรอกจำนวน'; return; }
-    msg.textContent = ''; await DB.insert('stock_in', { sku, qty, moved_on: siDate.value, note: siNote.value || null }); clearCache(); route();
+    msg.textContent = ''; await DB.insert('stock_in', { sku, qty, moved_on: siDate.value, note: siNote.value || null }); clearCache(); route(); loadFreshness(true);
   };
 }
 
@@ -604,10 +604,31 @@ let FRESH = null;
 const dShortY = s => { const d = pDate(String(s).slice(0, 10)); return `${d.getDate()} ${TH_M[d.getMonth()]} ${String(d.getFullYear() + 543).slice(2)}`; };
 async function loadFreshness(force) {
   if (FRESH && !force) return drawFreshness();
-  const U = await DB.select('uploads', 'kind, date_to, uploaded_at', q => q.order('uploaded_at', { ascending: false }).limit(500)).catch(() => null);
+  const [U, R] = await Promise.all([DB.select('uploads', 'kind, date_to, uploaded_at', q => q.order('uploaded_at', { ascending: false }).limit(500)).catch(() => null),
+    DB.select('v_sales_refresh', '*').catch(() => [])]);
   if (!U) return;
   const maxTo = k => U.filter(u => u.kind === k && u.date_to).map(u => String(u.date_to).slice(0, 10)).sort().pop() || null;
-  FRESH = { last: U[0] ? U[0].uploaded_at : null, orders: maxTo('orders'), income: maxTo('settlement') }; drawFreshness();
+  const was = FRESH && FRESH.ref && FRESH.ref.pending;
+  FRESH = { last: U[0] ? U[0].uploaded_at : null, orders: maxTo('orders'), income: maxTo('settlement'), ref: R[0] || null }; drawFreshness();
+  // ระหว่างฐานข้อมูลคำนวณตัวเลขใหม่ (cron ทุก 1 นาที): เช็คซ้ำทุก 15 วินาที · เสร็จแล้วล้างแคชและวาดหน้าปัจจุบันใหม่ให้เอง
+  clearTimeout(loadFreshness.t);
+  if (FRESH.ref && FRESH.ref.pending) loadFreshness.t = setTimeout(() => loadFreshness(true), 15000);
+  else if (was) { clearCache(); route(true); }
+}
+// รอจนตัวเลขทุกหน้าอัปเดตเสร็จ (ใช้หลังอัปโหลด) · คืนค่า true = เสร็จ หรือข้อความบอกปัญหา
+async function waitSales(onTick) {
+  const t0 = Date.now();
+  for (;;) {
+    const R = await DB.select('v_sales_refresh', '*').catch(() => null);
+    if (!R) { try { await DB.rpc('refresh_sales'); return true; } catch (e) { return 'อัปเดตตัวเลขไม่สำเร็จ: ' + e.message; } }   // ยังไม่ได้รัน SQL 13: สั่งเองแบบเดิม
+    const r = R[0] || {};
+    if (!r.pending) return true;
+    if (r.error && r.tried_at && new Date(r.tried_at) >= new Date(r.changed_at)) return 'อัปเดตตัวเลขไม่สำเร็จ ระบบจะลองใหม่เองใน 10 นาที — ถ้ายังไม่หาย แจ้งผู้ดูแลระบบ (' + r.error + ')';
+    const sec = Math.round((Date.now() - t0) / 1000);
+    if (sec > 600) return 'ยังคำนวณไม่เสร็จ ระบบจะอัปเดตให้เอง ตัวเลขจะเปลี่ยนเองเมื่อเสร็จ';
+    if (onTick) onTick(`กำลังคำนวณ… ${sec < 60 ? sec + ' วินาที' : Math.floor(sec / 60) + ' นาที ' + (sec % 60) + ' วินาที'} (ปกติ 1–2 นาที · ปิดหน้านี้ได้ ระบบทำต่อเอง)`);
+    await new Promise(res => setTimeout(res, 5000));
+  }
 }
 function drawFreshness() {
   if (!FRESH) return;
@@ -616,6 +637,14 @@ function drawFreshness() {
   const last = new Date(FRESH.last), today = ymd(new Date()), lastDay = ymd(last), hm = last.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' });
   const age = Math.round((pDate(today) - pDate(lastDay)) / 864e5), fresh = age <= 2;
   const info = `อัปโหลดล่าสุด ${dLong(lastDay)} ${hm}\nคำสั่งซื้อถึง ${FRESH.orders ? dLong(FRESH.orders) : '—'}\nรายงานรับเงินถึง ${FRESH.income ? dLong(FRESH.income) : '—'}`;
+  const rf = FRESH.ref, busy = rf && rf.pending, failed = busy && rf.error;
+  if (busy) {
+    const t = failed ? 'อัปเดตตัวเลขไม่สำเร็จ' : 'กำลังอัปเดตตัวเลข', sub = failed ? 'ระบบจะลองใหม่เอง' : 'ใช้ข้อมูลใหม่ใน 1–2 นาที';
+    const tip = (failed ? `รอบล่าสุดคำนวณไม่สำเร็จ ระบบจะลองใหม่ทุก 10 นาที\n${rf.error}\nถ้าค้างนาน แจ้งผู้ดูแลระบบ` : 'มีข้อมูลใหม่ ฐานข้อมูลกำลังคำนวณตัวเลขทุกหน้า\nระหว่างนี้ตัวเลขบางหน้ายังเป็นของรอบก่อน · เสร็จแล้วหน้าจะอัปเดตเอง') + '\n\n' + info;
+    box.className = 'sb-status ' + (failed ? 'bad' : 'busy'); box.dataset.tip = tip; box.innerHTML = `<i></i><div><b>${t}</b><small>${sub}</small></div>`;
+    note.hidden = false; note.className = 'pg-note ' + (failed ? 'bad' : 'busy'); note.dataset.tip = tip; note.innerHTML = `<i></i>${t}…`;
+    return;
+  }
   box.className = 'sb-status' + (fresh ? '' : ' old'); box.dataset.tip = info;
   box.innerHTML = `<i></i><div><b>${fresh ? 'ข้อมูลอัปเดตแล้ว' : `อัปโหลดล่าสุด ${age} วันก่อน`}</b><small>คำสั่งซื้อถึง ${FRESH.orders ? dShortY(FRESH.orders) : '—'}</small></div>`;
   note.hidden = false; note.className = 'pg-note' + (fresh ? '' : ' old'); note.dataset.tip = info;
